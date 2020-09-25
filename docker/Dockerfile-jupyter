@@ -31,5 +31,8 @@ EXPOSE 8888
 # Use only GPU 0
 ENV CUDA_VISIBLE_DEVICES 0
 
+COPY project/requirements.txt ./requirements.txt
+run pip3 install -r ./requirements.txt
+COPY project ./
 # Run when the container launches
 CMD "bash"
