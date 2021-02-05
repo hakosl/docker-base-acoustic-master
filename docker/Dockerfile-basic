@@ -5,6 +5,7 @@ FROM nvidia/cuda
 CMD mkdir /project
 CMD mkdir /project/acoustic_private
 CMD mkdir /acoustic/log
+
 WORKDIR /project
 
 
@@ -16,13 +17,18 @@ ARG gid=1000
 
 # Some debs want to interact, even with apt-get install -y, this fixes it
 ENV DEBIAN_FRONTEND=noninteractive
-ENV HOME=/project
+RUN chown -R user:user /app
 
 # Install any needed packages from apt
 RUN apt-get update && apt-get install -y apt-transport-https
 RUN apt-get update && apt-get install -y sudo python3 python3-pip
 RUN apt-get update && apt-get install -y python3-tk
+RUN apt-get update && apt-get install -y sudo python3 python3-pip sshfs python3-ipython python3-notebook jupyter
 
+EXPOSE 8888
+
+
+ENV CUDA_VISIBLE_DEVICES 0
 # RUN pip3 install --trusted-host pypi.python.org -r xxxx
 
 # Configure user

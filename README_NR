@@ -1,0 +1,50 @@
+
+
+Instructions: U-Net model and plots for ICES paper
+
+--------------------------------------------------------------------------------------------------------
+
+###
+### Training U-Net segmentation model
+###
+
+    1. Open 'model_train_unet_paper.py'
+
+    2. At the end of the script <if __name__ == "__main__">, set args in function 'train_model':
+    - 'dev': Set Cuda device No.
+    - 'path_model_params_load': Set path to load pre-trained model params (only required if load_pre_trained==True).
+    - 'path_model_params_save': Set path to save model params after training.
+
+    3. Run the script
+
+--------------------------------------------------------------------------------------------------------
+
+###
+### Plot echogram with predictions --- OR --- Plot precision/recall curves for all years (takes several hours)
+###
+
+    1. Open 'predict.segmentation_paper.py'
+
+    2. At the end of the script <if __name__ == "__main__">, choose one of the two functions by uncommenting.
+
+    3a. 'plot_echograms_with_sandeel_prediction'
+    - 'year': Which year to select echograms from (valid years are 2007-2018)
+    - 'path_model_params': Path to pre-trained model parameters
+    - 'ignore_mode': (Read description in top of function definition)
+
+    3b. 'plot_pr_curves'
+    - path_model_params: Path to pre-trained model parameters
+
+    4. Run the script
+
+--------------------------------------------------------------------------------------------------------
+
+###
+### Saved plots/figures in paper
+###
+
+    - Directory 'plots.used_in_paper' contains plots used in the paper (v3, 21.06.2019)
+    - Directory 'plots.additional_plots' contains other plots (not used in the paper)
+    - Directory 'plots.segmentation_0_1_27' contains plots of predictions with three classes (not used in the paper)
+
+--------------------------------------------------------------------------------------------------------

@@ -3,7 +3,7 @@ astor==0.8.0
 cycler==0.10.0
 gast==0.2.2
 google-pasta==0.1.7
-grpcio==1.23.0
+#grpcio==1.23.0
 h5py==2.9.0
 joblib==0.13.2
 Keras-Applications==1.0.8
@@ -14,7 +14,7 @@ matplotlib==3.0.3
 numpy==1.16.4
 pandas==0.24.2
 Pillow==6.1.0
-protobuf==3.9.1
+#protobuf==3.9.1
 pyparsing==2.4.2
 python-dateutil==2.8.0
 pytz==2019.2
@@ -26,10 +26,14 @@ tensorboard==1.14.0
 tensorflow==1.14.0
 tensorflow-estimator==1.14.0
 termcolor==1.1.0
-torch==1.1.0
-torchvision==0.3.0
 Werkzeug==0.15.5
 wrapt==1.11.2
-jupyter
-notebook
+jupyter-matplotlib
 scikit-image
+pyyaml 
+python-dev
+#hdbscan
+numba
+#umap-learn
+
+

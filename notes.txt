@@ -1,0 +1,23 @@
+# Preproessering
+*-Kjør opp med int32 og float 32 (Nils Olav har fiksa, men dette må kjørast) (sjekk presisjon på int32) - Det er ferdig og nye data er lasta opp til NR.
+-Skriva om preproc med pyecholab
+
+-Bruk kun tobiskode som fisk; bakgrunn eller ignore (Olav)
+-Sample oftare frå fisketypar som ikkje er tobis (Olav)
+-Vi må tenka meir gjennom korleis vi sampler. Datapublikasjon (Olav/Anders [Nils Olav rydder opp])
+*-Validering. Bruka 2017 og 2018 som validering.
+
+# Batch
+*-Trekking av batch. Må gjera dette meir generelt (Olav/Anders)
+-Sjekk NOH_train.py om dette kan brukast der og (Olav/Anders)
+
+# Unet nyenett etc
+-Laga plotteerunte for frekvensresponse per klasse (Nils Olav [Anders ryddar opp])
+-Oppdatera Unetmodel med kommentarane som ligg inne (Nils Olav, Olav, Anders)
+-Refaktorera keras implementasjonen til pytorch (Olav, Anders)
+
+# Cost function
+-Vi må vekta på pixelverdi (200kHz) (Unet:Nils Olav, N: Anders)
+-Eventuelt endra labels
+
+

@@ -1,0 +1,91 @@
+FROM nvidia/cuda:10.0-base 
+
+# Install some basic utilities
+
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    sudo \
+    git \
+    bzip2 \
+    libx11-6 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    python3.6-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG user=myuser
+ARG group=mygroup
+ARG uid=1000
+ARG gid=1000
+
+RUN mkdir /app
+WORKDIR /app
+
+ENV TINI_VERSION v0.6.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /usr/bin/tini
+RUN chmod +x /usr/bin/tini
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+
+
+# Configure user
+ARG user=myuser
+ARG group=mygroup
+ARG uid=1000
+ARG gid=1000
+
+RUN groupadd -g $gid $user
+RUN useradd -u $uid -g $gid $user
+RUN usermod -a -G sudo $user
+RUN passwd -d $user
+
+
+RUN mkdir /acoustic
+RUN mkdir /acoustic/log
+ENV HOME=/acoustic
+RUN chown -R $user: /acoustic
+
+
+RUN chown -R $user: /app
+
+# Create a working directory
+
+
+# All users can use /home/user as their home directory
+
+
+# Install Miniconda and Python 3.6
+ENV CONDA_AUTO_UPDATE_CONDA=false
+ENV PATH=/miniconda/bin:$PATH
+RUN curl -sLo /miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-4.7.12.1-Linux-x86_64.sh \
+ && chmod +x /miniconda.sh \
+ && /miniconda.sh -b -p /miniconda \
+ && rm /miniconda.sh \
+ && conda install -y python==3.6.9 \
+ && conda install -c conda-forge jupyterlab \
+ && conda clean -ya
+
+# CUDA 10.1-specific steps
+RUN conda install -y -c pytorch \
+    cudatoolkit=10.1 \
+    "pytorch=1.4.0=py3.6_cuda10.1.243_cudnn7.6.3_0" \
+    "torchvision=0.5.0=py36_cu101" \
+ && conda clean -ya
+
+RUN conda install -c conda-forge umap-learn hdbscan
+
+
+
+ADD requirements.txt /app/
+RUN pip install -r requirements.txt
+RUN chown -R $user: /app
+EXPOSE 8888
+EXPOSE 6006
+# Set the default command to python3
+CMD ["python3"]
+# CMD ["jupyter", "notebook", "--port=8888", "--no-browser", "--ip=0.0.0.0", "--allow-root"]

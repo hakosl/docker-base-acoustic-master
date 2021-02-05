@@ -1,0 +1,24 @@
+model_name: "vanilla_vae"
+model:
+  capacity: [8, 32, 64, 128]
+  kernel_size: 3
+  channels: 5
+data_params:
+  clustering_params:
+    n_batches: 250
+  frequencies: [18, 38, 120, 200]
+  variational_beta: [0.1, 0.5, 1.0, 2.0]
+  dev: 0 # Set Cuda device number here, e.g. "dev=2".
+  window_dim: 64
+  batch_size: 81
+  lr: 0.0001
+  log_step: 2
+  iterations: 4
+  path_model_params_load: "" # Set path to load pre-trained model params (only required if load_pre_trained==True).
+  path_model_params_save: "/acoustic/test/vae_trained.pt" # Insert path, e.g. "/nr/project/bild/Cogmar/usr/obr/model/paper_v2_heave_2.pt",
+  partition: "year"
+  load_pre_trained: False
+  save_model_params: True
+  verbose: True
+  num_workers: 0
+  base_figure_dir: "output/vae_test_figures"
