@@ -139,9 +139,9 @@ def vae_loss(recon_x, x, mu, logvar, variational_beta, recon_loss="BCE", window_
     # Not averaging is the direct implementation of the negative log likelihood,
     # but averaging makes the weight of the other loss term independent of the image resolution.
     if recon_loss == "BCE":
-        recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="mean")
+        recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
     elif recon_loss == "MSE":
-        recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="mean")
+        recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
 
     
     # KL-divergence between the prior distribution over latent vectors

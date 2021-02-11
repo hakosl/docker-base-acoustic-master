@@ -1,14 +1,14 @@
 model_name: "vanilla_vae" # "datap_vae" or "vanilla_vae"
 model:
-  capacity: [32, 64, 128, 256, 512]
+  capacity: [2] # [32, 64, 128, 256, 512]
   kernel_size: 3
   channels: 5
 data_params:
   clustering_params:
     n_batches: 50
   frequencies: [18, 38, 120, 200]
-  variational_beta: [0.1, 1.0, 2.0, 5.0, 10.0]
-  dev: 1 # Set Cuda device number here, e.g. "dev=2".
+  variational_beta: [0.1] #[0.1, 1.0, 2.0, 5.0, 10.0]
+  dev: 0 # Set Cuda device number here, e.g. "dev=2".
   window_dim: 64
   batch_size: 64
   lr: 0.0001

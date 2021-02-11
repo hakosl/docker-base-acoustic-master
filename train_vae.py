@@ -10,6 +10,7 @@ import time
 import itertools
 import os
 
+import seaborn
 from sklearn.metrics import accuracy_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -42,7 +43,7 @@ from vae_model import VariationalAutoencoder, vae_loss, datapVAE, vae_models
 from visualization.vae_loss_vis import vae_loss_visualization
 from utils.logger import TensorboardLogger
 import models.unet_bn_sequential_db as models
-
+from plot_latent_space import plot_latent_space, plot_latent_space_gif
 
 parser = argparse.ArgumentParser(description='Generic runner for VAE models')
 parser.add_argument('--config',  '-c',
@@ -199,6 +200,10 @@ def train_model(
     :return: None
     '''
 
+    os.makedirs(base_figure_dir, exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/loss_graph", exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/clustering", exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/latent", exist_ok=True)
     window_size = [window_dim, window_dim]
 
     # Load echograms and create partition for train/test/val
@@ -301,6 +306,7 @@ def train_model(
     recon_losses = []
     kl_losses = []
     iteration = []
+    latent_image_fns = []
     for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
         # Load train data and transfer from numpy to pytorch
         #print(inputs_train)
@@ -335,6 +341,10 @@ def train_model(
 
         # Log loss and accuracy
         if (i + 1) % log_step == 0:
+            latent_image_fn = f"{base_figure_dir}/latent/{i}c:{model.capacity}b:{variational_beta}.png"
+            plot_latent_space(mu, logvar, si, latent_image_fn)
+            latent_image_fns.append(latent_image_fn)
+
             current_time = time.time()
 
             delta = current_time - start_time
@@ -374,16 +384,14 @@ def train_model(
         print('Trained model parameters saved to file: ' + path_model_params_save)
 
 
-    os.makedirs(base_figure_dir, exist_ok=True)
-    os.makedirs(f"{base_figure_dir}/loss_graph", exist_ok=True)
-    os.makedirs(f"{base_figure_dir}/clustering", exist_ok=True)
 
 
     fig = vae_loss_visualization(iteration, losses, recon_losses, kl_losses)
     loss_fig_path = f"{base_figure_dir}/loss_graph/c{model.capacity}:b:{variational_beta}.png"
     fig.savefig(loss_fig_path)
     plt.close(fig)
-    print(f"loss graph saved to {loss_fig_path}")
+    plot_latent_space_gif(latent_image_fns, f"{base_figure_dir}/latent/c{model.capacity}b:{variational_beta}.gif")
+    print(f"loss graph saved to {loss_fig_path}", )
 
 
     fig_path = f"{base_figure_dir}/clustering/c{model.capacity}:b:{variational_beta}.png"

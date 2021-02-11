@@ -32,6 +32,7 @@ opencv-python
 python-dev
 scikit-image
 pyyaml 
+imageio
 #hdbscan
 #easydict
 
