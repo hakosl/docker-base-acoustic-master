@@ -29,13 +29,12 @@ termcolor==1.1.0
 Werkzeug==0.15.5
 wrapt==1.11.2
 opencv-python
-python-dev
 scikit-image
 pyyaml 
 imageio
 #hdbscan
 #easydict
-
+ptvsd
 #umap-learn
 
 

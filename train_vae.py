@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import time
 import itertools
 import os
+import ptvsd
 
 import seaborn
 from sklearn.metrics import accuracy_score
@@ -22,6 +23,8 @@ from hdbscan import HDBSCAN
 from sklearn.model_selection import ParameterGrid
 from sklearn.metrics import adjusted_rand_score
 from sklearn.decomposition import PCA
+from visualization.tile_image import tile_recon, tile_sampling
+from visualization.make_grid import make_grid
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -35,15 +38,16 @@ from batch.data_transform_functions.log import log
 from batch.data_transform_functions.remove_nan_inf import remove_nan_inf
 #from batch.data_transform_functions.db_with_limits import db_with_limits
 from batch.data_transform_functions.db_ import db
-from batch.data_transform_functions.db_with_limits_norm import db_with_limits_norm
+from batch.data_transform_functions.db_with_limits_norm import db_with_limits_norm, db_with_limits_norm_MSE
 from batch.label_transform_functions.index_0_1_27 import index_0_1_27
 from batch.label_transform_functions.relabel_with_threshold_morph_close import relabel_with_threshold_morph_close
 from batch.combine_functions import CombineFunctions
-from vae_model import VariationalAutoencoder, vae_loss, datapVAE, vae_models
+from models.vae_models import vae_models
 from visualization.vae_loss_vis import vae_loss_visualization
 from utils.logger import TensorboardLogger
 import models.unet_bn_sequential_db as models
-from plot_latent_space import plot_latent_space, plot_latent_space_gif
+from visualization.plot_latent_space import plot_latent_space, plot_latent_space_gif
+from sklearn.cluster import KMeans
 
 parser = argparse.ArgumentParser(description='Generic runner for VAE models')
 parser.add_argument('--config',  '-c',
@@ -51,6 +55,11 @@ parser.add_argument('--config',  '-c',
                     metavar='FILE',
                     help='path to the config file',
                     default='config/vae_train.yaml')
+
+parser.add_argument("--debugger", "-d", 
+    dest="debug", 
+    action="store_true",
+    help="run the program with debugger server running")
 
 # Partition data into train, test, val
 def partition_data(echograms, partition='random', portion_train=0.85):
@@ -89,32 +98,22 @@ def get_validation_set_paths(validation_set):
     return [ech.name for ech in validation_set[1]]
 
 
-def validate_clustering(model, cm, clustering_params, dataloader_train, dataloader_test, samplers_train, samplers_test, device, capacity, vb, fig_path="output/clustering.png", n_visualize=250):
+def validate_clustering(model, clusterer, clustering_params, test_inputs, si_test, samplers_test, device, capacity, vb, fig_path="output/clustering.png", n_visualize=250):
     enc = model.encoder
 
     
     latent_mus = []
     latent_logvars = []
     sample_indexes = []
-
-    for i, (inputs_train, labels_train, si) in itertools.islice(enumerate(dataloader_train), clustering_params["n_batches"]):    
-        inputs_train = inputs_train.float().to(device)
-        labels_train = labels_train.long().to(device)
     
-        latent_mu, latent_logvar = enc(inputs_train)
-        latent_mus.append(latent_mu.data.cpu().numpy())
-        latent_logvars.append(latent_logvar.data.cpu().numpy())
-        sample_indexes.append(si.data.cpu().numpy())
-
-
+    latent_mu, latent_logvar = enc(test_inputs)
+    latent_mus = latent_mu.data.cpu().numpy()
+    latent_logvars = latent_logvar.data.cpu().numpy()
+    sample_indexes = si_test.data.cpu().numpy()
     
-
-    latent_mus = np.array(latent_mus).reshape((-1, capacity))
-    latent_logvars = np.array(latent_logvars).reshape((-1, capacity))
-    sample_indexes = np.array(sample_indexes).reshape(-1)
-
+    print(f"latent mu shape {latent_mus.shape}")
+    latent_mus = latent_mus.reshape(latent_mus.shape[0], -1)
     #me = PCA(n_components=3, random_state = 42).fit_transform(latent_mus)
-    clusterer = cm()
     clusterer.fit(latent_mus)
     best_labels = clusterer.labels_
 
@@ -122,7 +121,7 @@ def validate_clustering(model, cm, clustering_params, dataloader_train, dataload
 
     me = PCA(n_components=2, random_state = 42).fit_transform(latent_mus)   
 
-    fig, ax = plt.subplots(1, 2, figsize=(9, 5))
+    fig, ax = plt.subplots(1, 3, figsize=(12, 5))
 
     ax[0].scatter(me[:n_visualize][:, 0], me[:n_visualize][:, 1], c=best_labels[:n_visualize])
     ax[0].set_title("DBSCAN clusters")
@@ -130,10 +129,10 @@ def validate_clustering(model, cm, clustering_params, dataloader_train, dataload
     colors = ["r", "g", "b", "tab:orange", "purple", "cyan"]
     for si in np.unique(sample_indexes[:n_visualize]):
         sm = sample_indexes[:n_visualize] == si
-        ax[1].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(samplers_train[:n_visualize][si]))
-        ax[1].set_title("original labels")
+        ax[2].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(samplers_test[:n_visualize][si]))
+        ax[2].set_title("original labels")
 
-    ax[1].legend()
+    ax[2].legend()
     fig.suptitle(f"cap: {capacity} beta: {vb} r_score: {best_r_score}")
     fig.savefig(fig_path)
     plt.close(fig)
@@ -145,12 +144,16 @@ def validate_clustering(model, cm, clustering_params, dataloader_train, dataload
     clf.fit(X_train, y_train)
 
     clf_predictions = clf.predict(X_val)
+
+    print(clf_predictions.shape, clf_predictions)
+    #ax[1].scatter(me[:n_visualize][:, 0], me[:n_visualize][:, 1], c=clf_predictions[:n_visualize])
+    #ax[1].set_title("logreg classifications")
     clf_acc = accuracy_score(y_val, clf_predictions)
 
     print(f"classifier accuracy: {clf_acc}")
 
 
-    return best_r_score
+    return best_r_score, clusterer, clf
 
 
 
@@ -176,7 +179,9 @@ def train_model(
         save_model_params=False,
         recon_criterion="MSE",
         base_figure_dir="output/",
-        num_workers=1
+        num_workers=1,
+        early_stopping=True,
+        patience=200
         
 ):
     '''
@@ -204,6 +209,9 @@ def train_model(
     os.makedirs(f"{base_figure_dir}/loss_graph", exist_ok=True)
     os.makedirs(f"{base_figure_dir}/clustering", exist_ok=True)
     os.makedirs(f"{base_figure_dir}/latent", exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/samples", exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/recon", exist_ok=True)
+    os.makedirs(f"{base_figure_dir}/latent", exist_ok=True)
     window_size = [window_dim, window_dim]
 
     # Load echograms and create partition for train/test/val
@@ -224,7 +232,7 @@ def train_model(
 
     logger = TensorboardLogger('cogmar_test')
 
-    criterion = vae_loss
+    criterion = model.loss
     optimizer = optim.Adam(model.parameters())
 
     num_workers = 0 
@@ -246,7 +254,7 @@ def train_model(
     }
 
     
-    sampler_probs = [1, 5, 5, 5, 5, 5]
+    sampler_probs = [100, 100, 5, 5, 5, 5]
     label_types = [1, 27]
 
     samplers_train = [
@@ -269,6 +277,10 @@ def train_model(
 
     augmentation = CombineFunctions([])
     label_transform = CombineFunctions([index_0_1_27, relabel_with_threshold_morph_close])
+    #if recon_criterion == "MSE":
+    #    # if recon criterion is mse we want the domain to be -1 - 1
+    #    data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm_MSE])
+    #else:
     data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm])
 
     transform_functions = {
@@ -289,9 +301,17 @@ def train_model(
         "worker_init_fn": np.random.seed
     }
 
-    dataloader_train = DataLoader(dataset_train, **dataloader_arguments)
-    dataloader_test = DataLoader(dataset_test, **dataloader_arguments)
+    test_dataloader_arguments = {
+        **dataloader_arguments,
+        "batch_size": 1000
+    }
 
+    dataloader_train = DataLoader(dataset_train, **dataloader_arguments)
+    dataloader_test = DataLoader(dataset_test, **test_dataloader_arguments)
+
+    _, (inputs_test, labels_test, si_test) = next(enumerate(dataloader_test))
+    inputs_test = inputs_test.float().to(device)
+    labels_test = labels_test.long().to(device)
     start_time = time.time()
 
 
@@ -307,6 +327,9 @@ def train_model(
     kl_losses = []
     iteration = []
     latent_image_fns = []
+
+    best_val_loss = float("inf")
+    best_val_iteration = 0
     for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
         # Load train data and transfer from numpy to pytorch
         #print(inputs_train)
@@ -323,9 +346,9 @@ def train_model(
             x_recon, 
             inputs_train, 
             mu, 
-            logvar, 
+            logvar,
             variational_beta, 
-            recon_criterion, 
+            recon_loss=recon_criterion, 
             window_dim=window_dim,
             channels=model.channels)
         loss_train.backward()
@@ -338,11 +361,31 @@ def train_model(
         running_recon_loss += recon_loss.item()
         running_kl_loss += kl_loss.item()
         
-
         # Log loss and accuracy
+        if (i) % 1000 == 0:
+            samples = model.sample(3, dev)
+
+            img = tile_sampling(samples.detach(), 3)
+            fig, ax = plt.subplots(1, 1)
+            ax.imshow(img, aspect="auto")
+            recon_image_fn = f"{base_figure_dir}/samples/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+            fig.suptitle(recon_image_fn)
+            fig.savefig(recon_image_fn)
+            plt.close(fig)
+
+            img = tile_recon(inputs_train, x_recon, labels_train, 3)
+            fig, ax = plt.subplots(1, 1)
+            ax.imshow(img, aspect="auto")
+            recon_image_fn = f"{base_figure_dir}/recon/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+            fig.suptitle(recon_image_fn)
+            fig.savefig(recon_image_fn)
+            plt.close(fig)
         if (i + 1) % log_step == 0:
-            latent_image_fn = f"{base_figure_dir}/latent/{i}c:{model.capacity}b:{variational_beta}.png"
-            plot_latent_space(mu, logvar, si, latent_image_fn)
+
+            x_recon_test, mu_test, logvar_test = model(inputs_test.float().to(device))
+            latent_image_fn = f"{base_figure_dir}/latent/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+
+            plot_latent_space(mu_test, logvar_test, si_test, latent_image_fn)
             latent_image_fns.append(latent_image_fn)
 
             current_time = time.time()
@@ -365,49 +408,71 @@ def train_model(
             recon_losses.append(running_recon_loss / log_step)
             kl_losses.append(running_kl_loss / log_step)
             iteration.append(i)
+            
+            if best_val_loss > running_loss_train:
+                best_val_loss = running_loss_train
+                
+                best_val_iteration = i
+
+                # Save model parameters to file after training
+                if save_model_params:
+                    if path_model_params_save == None:
+                        path_model_params_save = path_model_params_load
+                    #torch.cuda.empty_cache()
+                    #torch.save(model.to('cpu').state_dict(), path_model_params)
+                    torch.save(model.state_dict(), path_model_params_save)
+                    print('Trained model parameters saved to file: ' + path_model_params_save)
+
+            else:
+                if i > best_val_iteration + patience:
+                    break
+
 
             running_loss_train = 0.0       
             running_recon_loss = 0.0
             running_kl_loss = 0.0
-            logger.log_scalar('loss train', running_loss_train / log_step, i + 1)
+            
     if verbose:
         print()
         print('Training complete')
 
-    # Save model parameters to file after training
-    if save_model_params:
-        if path_model_params_save == None:
-            path_model_params_save = path_model_params_load
-        #torch.cuda.empty_cache()
-        #torch.save(model.to('cpu').state_dict(), path_model_params)
-        torch.save(model.state_dict(), path_model_params_save)
-        print('Trained model parameters saved to file: ' + path_model_params_save)
-
-
-
 
     fig = vae_loss_visualization(iteration, losses, recon_losses, kl_losses)
-    loss_fig_path = f"{base_figure_dir}/loss_graph/c{model.capacity}:b:{variational_beta}.png"
+    loss_fig_path = f"{base_figure_dir}/loss_graph/r{recon_criterion}c{model.capacity}:b:{variational_beta}.png"
     fig.savefig(loss_fig_path)
     plt.close(fig)
     plot_latent_space_gif(latent_image_fns, f"{base_figure_dir}/latent/c{model.capacity}b:{variational_beta}.gif")
     print(f"loss graph saved to {loss_fig_path}", )
 
 
-    fig_path = f"{base_figure_dir}/clustering/c{model.capacity}:b:{variational_beta}.png"
-    best_r_score = validate_clustering(model, HDBSCAN, clustering_params, dataloader_train, dataloader_test, samplers_train, samplers_test, device, model.capacity, variational_beta, fig_path=fig_path)
+    fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
+    best_r_score, cm, clf = validate_clustering(model, KMeans(n_clusters=4), clustering_params, inputs_test, si_test, samplers_test, device, model.capacity, variational_beta, fig_path=fig_path)
+    grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
+    make_grid(echograms_test[1], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
+
     print(f"clustering figure saved to: {fig_path}")
     print(f"r_score: {best_r_score}")
     return best_r_score
 
 
 if __name__ == '__main__':
+    
     args = parser.parse_args()
+    if args.debug:
+        try:
+            ptvsd.enable_attach()
+            ptvsd.wait_for_attach()
+        except OSError as exc:
+            print(exc)
+
     with open(args.filename, 'r') as file:
         try:
             config = yaml.safe_load(file)
         except yaml.YAMLError as exc:
             print(exc)
+
+    
+
 
     model_cfg = config["model"]
     data_params = config["data_params"]
@@ -416,7 +481,7 @@ if __name__ == '__main__':
     for current_param in ParameterGrid(parameters_to_search):
         np.random.seed(42)
         model_cfg = {**model_cfg, "capacity": current_param["capacity"]}
-        path_model_params_save = f"/acoustic/vae_trained:c{current_param['capacity']}:b:{current_param['variational_beta']}.pt"
+        path_model_params_save = f"/acoustic/{config['model_name']}_trained:c{current_param['capacity']}:b:{current_param['variational_beta']}.pt"
         data_params = {**data_params, "path_model_params_save": path_model_params_save, "variational_beta": current_param["variational_beta"]} 
         model_cfg["window_dim"] = config["data_params"]["window_dim"]
         model = vae_models[config["model_name"]](**model_cfg)

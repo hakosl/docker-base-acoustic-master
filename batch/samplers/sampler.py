@@ -4,6 +4,7 @@ class Sampler():
             self.sample_probability = kwargs["sample_probs"]
         else:
             self.sample_probability = 1
+        self.random_sample = kwargs["random_sample"]
 
     def get_name(self):
         return self.__class__.__name__

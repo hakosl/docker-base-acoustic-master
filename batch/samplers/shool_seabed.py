@@ -20,3 +20,4 @@ class ShoolSeabed(Shool):
             [(e, o) for e, o in self.shools if
              np.abs(e.get_seabed()[int((o['bounding_box'][2] + o['bounding_box'][3]) / 2)] - o['bounding_box'][1]) <
              self.max_dist_to_seabed]
+

@@ -1,8 +1,11 @@
 model_name: "vanilla_vae"
 model:
   capacity: [2] #, 32, 64, 128]
-  kernel_size: 3
+  kernel_size: 4
+  stride: 2
   channels: 5
+  extra_layer: True
+  depth_input: True
 data_params:
   clustering_params:
     n_batches: 250
@@ -21,5 +24,5 @@ data_params:
   save_model_params: True
   verbose: True
   num_workers: 0
-
+  recon_criterion: "BCE"
   base_figure_dir: "output/vae_test_figures"

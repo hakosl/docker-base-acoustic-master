@@ -11,7 +11,9 @@ class Dataset():
                  label_transform_function=None,
                  data_transform_function=None,
                  include_depthmap = False,
-                 si=False):
+                 si=False,
+                 loss="BCE",
+                 full_labels=False):
         """
         A dataset is used to draw random samples
         :param samplers: The samplers used to draw samples
@@ -39,6 +41,8 @@ class Dataset():
         self.sampler_probs = np.array(self.sampler_probs)
         self.sampler_probs = np.cumsum(self.sampler_probs).astype(float)
         self.sampler_probs /= np.max(self.sampler_probs)
+        self.loss = loss
+        self.full_labels = full_labels
 
     def __getitem__(self, index):
         #Select which sampler to use
@@ -51,15 +55,18 @@ class Dataset():
         center_location, echogram = sampler.get_sample()
 
         # Adjust coordinate by random shift in y and x direction
-        #center_location[0] += np.random.randint(-self.window_size[0]//2, self.window_size[0]//2 + 1)
-        #center_location[1] += np.random.randint(-self.window_size[1]//2, self.window_size[1]//2 + 1)
 
-        #center_location[0] = max(min(self.window_size[0]//2, center_location[0]), echogram.shape[0] - self.window_size[0]//2)
-        #center_location[1] = max(min(self.window_size[1]//2, center_location[1]), echogram.shape[1] - self.window_size[1]//2)
 
         #Get data/labels-patches
-        
-        data, labels = get_crop(echogram, center_location, self.window_size, self.frequencies)
+        if sampler.random_sample:
+            center_location[0] += np.random.randint(-self.window_size[0]//2, self.window_size[0]//2 + 1)
+            center_location[1] += np.random.randint(-self.window_size[1]//2, self.window_size[1]//2 + 1)
+
+            center_location[0] = max(min(self.window_size[0]//2, center_location[0]), echogram.shape[0] - self.window_size[0]//2)
+            center_location[1] = max(min(self.window_size[1]//2, center_location[1]), echogram.shape[1] - self.window_size[1]//2)
+            data, labels = get_crop(echogram, center_location, self.window_size, self.frequencies, sampler.random_sample)
+        else:
+            data, labels = get_crop(echogram, center_location, self.window_size, self.frequencies, sampler.random_sample)
         
         # Apply augmentation
         if self.augmentation_function is not None:
@@ -76,9 +83,13 @@ class Dataset():
         if self.include_depthmap:
             min_depth, max_depth = echogram.range_vector[0], echogram.range_vector[-1]
             y_len = echogram.shape[0]
-            [(ymin, ymax), _] = center_location
+            if not sampler.random_sample:
+                [(ymin, ymax), _] = center_location
+            else:
+                [ycenter, _] = center_location
+                ymin, ymax = ycenter - self.window_size[0]//2, ycenter + self.window_size[0]//2
 
-
+            
             eg_min_depth, eg_max_depth = (ymin / y_len) * max_depth + min_depth, (ymax / y_len) * max_depth + min_depth 
 
             depthmap = np.repeat(np.linspace(eg_min_depth, eg_max_depth, data.shape[1])[np.newaxis], data.shape[2], axis=0)[np.newaxis].transpose((0, 2, 1))
@@ -88,7 +99,10 @@ class Dataset():
 
         labels = labels.astype('int16')
         if self.si:
-            return data, labels, sample_index
+            if self.full_labels:
+                return data, labels, sample_index
+            else:
+                return data, labels, sampler.get_label()
         else:
             return data, labels
 
@@ -96,15 +110,21 @@ class Dataset():
         return self.n_samples
 
 
-def get_crop(echogram, center_location, window_size, freqs):
+def get_crop(echogram, center_location, window_size, freqs, random_sample):
     """
     Returns a crop of data around the pixels specified in the center_location.
 
     """
     # Get grid sampled around center_location
     
-    gridinput = [[center_location[i][0], center_location[i][1], window_size[i]] for i in range(len(center_location))]
-    grid = getGridalt(gridinput)# + np.expand_dims(np.expand_dims(center_location, 1), 1)
+    
+    if random_sample:
+        grid = getGrid(window_size)
+        grid[0] += center_location[0]
+        grid[1] += center_location[1]
+    else:
+        gridinput = [[center_location[i][0], center_location[i][1], window_size[i]] for i in range(len(center_location))]
+        grid = getGridalt(gridinput)# + np.expand_dims(np.expand_dims(center_location, 1), 1)
 
     channels = []
     for f in freqs:

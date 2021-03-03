@@ -13,6 +13,9 @@ class BackgroundSeabed(Sampler):
         
         self.echograms = kwargs["echograms"]
         self.window_size = kwargs["window_size"]
+
+    def get_label(self):
+        return 1
         
 
     def get_sample(self):

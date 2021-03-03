@@ -46,6 +46,12 @@ class Shool(Sampler):
     
     def get_name(self):
         return f"{self.__class__.__name__}, fish_type: {self.fish_type}"
+
+    def get_label(self):
+        if self.fish_type == 1:
+            return 2
+        elif self.fish_type == 27:
+            return 3
     
     def get_sample(self):
         """
@@ -66,9 +72,14 @@ class Shool(Sampler):
             ymax, xmax = np.amax(o["indexes"], 0)
             ymin, xmin = np.amin(o["indexes"], 0)
 
+            
             xdim, ydim = xmax - xmin, ymax - ymin
-
-            xmid, ymid = (xmax + xmin) / 2, (ymax + ymin) / 2
+            
+            #if xmax == xmin or ymax == ymin:
+            #    return self.get_sample()
+            xmid = np.random.randint(xmin - 10, xmax + 10)
+            ymid = np.random.randint(ymin - 10, ymax + 10)
+            #xmid, ymid = (xmax + xmin) / 2, (ymax + ymin) / 2
 
 
             # find largest axis and make the other axis as big as that one

@@ -44,4 +44,4 @@ vae:
 
 
 vae-ftest:
-	$(RUNCMD) python3 train_vae.py --config=config/vae_test_config.yaml
+	$(RUNCMD) python3 train_vae.py --config=config/vae_test_config.yaml $(d) 
