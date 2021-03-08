@@ -13,9 +13,9 @@ import ptvsd
 
 import seaborn
 from sklearn.metrics import accuracy_score
+from sklearn.svm import SVC
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.cluster import DBSCAN
@@ -140,14 +140,16 @@ def validate_clustering(model, clusterer, clustering_params, test_inputs, si_tes
     X_train, X_val, y_train, y_val = train_test_split(latent_mus, sample_indexes, test_size=0.2)
 
     clf = LogisticRegression(random_state=0, multi_class="auto")
+    clf = SVC(decision_function_shape='ovo')
     #clf = make_pipeline(StandardScaler(), SVC(gamma="auto"))
     clf.fit(X_train, y_train)
 
     clf_predictions = clf.predict(X_val)
 
-    print(clf_predictions.shape, clf_predictions)
-    #ax[1].scatter(me[:n_visualize][:, 0], me[:n_visualize][:, 1], c=clf_predictions[:n_visualize])
-    #ax[1].set_title("logreg classifications")
+    print(clf_predictions[:30])
+    print(y_val[:30])
+    ax[1].scatter(X_val[:n_visualize][:, 0], X_val[:n_visualize][:, 1], c=clf_predictions[:n_visualize])
+    ax[1].set_title("logreg classifications")
     clf_acc = accuracy_score(y_val, clf_predictions)
 
     print(f"classifier accuracy: {clf_acc}")
@@ -290,9 +292,10 @@ def train_model(
     }
 
     dataset_arguments = [window_size, frequencies, batch_size * iterations]
+    test_dataset_arguments = [window_size, frequencies, 1000]
 
     dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=True)
-    dataset_test = Dataset(samplers_test, *dataset_arguments, si=True, **transform_functions, include_depthmap=True)
+    dataset_test = Dataset(samplers_test, *test_dataset_arguments, si=True, **transform_functions, include_depthmap=True)
 
     dataloader_arguments = {
         "batch_size": batch_size, 
@@ -446,7 +449,7 @@ def train_model(
 
 
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    best_r_score, cm, clf = validate_clustering(model, KMeans(n_clusters=4), clustering_params, inputs_test, si_test, samplers_test, device, model.capacity, variational_beta, fig_path=fig_path)
+    best_r_score, cm, clf = validate_clustering(model, HDBSCAN(prediction_data=True), clustering_params, inputs_test, si_test, samplers_test, device, model.capacity, variational_beta, fig_path=fig_path)
     grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
     make_grid(echograms_test[1], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
 
