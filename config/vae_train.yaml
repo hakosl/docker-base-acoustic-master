@@ -1,4 +1,4 @@
-model_name: "vanilla_vae" # "InfoVAE" or "vanilla_vae"
+model_name: "InfoVAE" # "InfoVAE" or "vanilla_vae"
 model:
   capacity: [2, 8, 16] # [32, 64, 128, 256, 512]
   kernel_size: 4
@@ -10,7 +10,7 @@ data_params:
     n_batches: 50
   frequencies: [18, 38, 120, 200]
   variational_beta: [1.0] #[0.1, 1.0, 2.0, 5.0, 10.0]
-  dev: 0 # Set Cuda device number here, e.g. "dev=2".
+  dev: 1 # Set Cuda device number here, e.g. "dev=2".
   window_dim: 64
   batch_size: 64
   lr: 0.0001
@@ -23,5 +23,5 @@ data_params:
   save_model_params: True
   verbose: True
   num_workers: 0
-  recon_criterion: "BCE"
-  base_figure_dir: "output/info_vae_figures"
+  recon_criterion: "MSE"
+  base_figure_dir: "output"

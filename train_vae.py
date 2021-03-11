@@ -25,6 +25,7 @@ from sklearn.metrics import adjusted_rand_score
 from sklearn.decomposition import PCA
 from visualization.tile_image import tile_recon, tile_sampling
 from visualization.make_grid import make_grid
+from utils.data_utils import partition_data, get_validation_set_paths
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -47,7 +48,10 @@ from visualization.vae_loss_vis import vae_loss_visualization
 from utils.logger import TensorboardLogger
 import models.unet_bn_sequential_db as models
 from visualization.plot_latent_space import plot_latent_space, plot_latent_space_gif
+from visualization.validate_clustering import validate_clustering
 from sklearn.cluster import KMeans
+
+from utils.data_utils import get_datasets
 
 parser = argparse.ArgumentParser(description='Generic runner for VAE models')
 parser.add_argument('--config',  '-c',
@@ -60,104 +64,6 @@ parser.add_argument("--debugger", "-d",
     dest="debug", 
     action="store_true",
     help="run the program with debugger server running")
-
-# Partition data into train, test, val
-def partition_data(echograms, partition='random', portion_train=0.85):
-    # Choose partitioning of data by specifying 'partition' == 'random' OR 'year'
-
-    if partition == 'random':
-        # Random partition of all echograms
-
-        # Set random seed to get the same partition every time
-        np.random.seed(seed=10)
-        np.random.shuffle(echograms)
-        train = echograms[:int(portion_train * len(echograms))]
-        test = echograms[int(portion_train * len(echograms)):]
-        val = []
-
-        # Reset random seed to generate random crops during training
-        np.random.seed(seed=None)
-
-    elif partition == 'year':
-        # Partition by year of echogram
-        train = list(filter(lambda x: any(
-            [year in x.name for year in
-             ['D2011', 'D2012', 'D2013', 'D2014', 'D2015','D2016']]), echograms))
-        test = list(filter(lambda x: any([year in x.name for year in ['D2017']]), echograms))
-        val = []
-
-    else:
-        print("Parameter 'partition' must equal 'random' or 'year'")
-
-    print('Train:', len(train), ' Test:', len(test), ' Val:', len(val))
-
-    return train, test, val
-
-
-def get_validation_set_paths(validation_set):
-    return [ech.name for ech in validation_set[1]]
-
-
-def validate_clustering(model, clusterer, clustering_params, test_inputs, si_test, samplers_test, device, capacity, vb, fig_path="output/clustering.png", n_visualize=250):
-    enc = model.encoder
-
-    
-    latent_mus = []
-    latent_logvars = []
-    sample_indexes = []
-    
-    latent_mu, latent_logvar = enc(test_inputs)
-    latent_mus = latent_mu.data.cpu().numpy()
-    latent_logvars = latent_logvar.data.cpu().numpy()
-    sample_indexes = si_test.data.cpu().numpy()
-    
-    print(f"latent mu shape {latent_mus.shape}")
-    latent_mus = latent_mus.reshape(latent_mus.shape[0], -1)
-    #me = PCA(n_components=3, random_state = 42).fit_transform(latent_mus)
-    clusterer.fit(latent_mus)
-    best_labels = clusterer.labels_
-
-    best_r_score = adjusted_rand_score(best_labels, sample_indexes)
-
-    me = PCA(n_components=2, random_state = 42).fit_transform(latent_mus)   
-
-    fig, ax = plt.subplots(1, 3, figsize=(12, 5))
-
-    ax[0].scatter(me[:n_visualize][:, 0], me[:n_visualize][:, 1], c=best_labels[:n_visualize])
-    ax[0].set_title("DBSCAN clusters")
-
-    colors = ["r", "g", "b", "tab:orange", "purple", "cyan"]
-    for si in np.unique(sample_indexes[:n_visualize]):
-        sm = sample_indexes[:n_visualize] == si
-        ax[2].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(samplers_test[:n_visualize][si]))
-        ax[2].set_title("original labels")
-
-    ax[2].legend()
-    fig.suptitle(f"cap: {capacity} beta: {vb} r_score: {best_r_score}")
-    fig.savefig(fig_path)
-    plt.close(fig)
-
-    X_train, X_val, y_train, y_val = train_test_split(latent_mus, sample_indexes, test_size=0.2)
-
-    clf = LogisticRegression(random_state=0, multi_class="auto")
-    clf = SVC(decision_function_shape='ovo')
-    #clf = make_pipeline(StandardScaler(), SVC(gamma="auto"))
-    clf.fit(X_train, y_train)
-
-    clf_predictions = clf.predict(X_val)
-
-    print(clf_predictions[:30])
-    print(y_val[:30])
-    ax[1].scatter(X_val[:n_visualize][:, 0], X_val[:n_visualize][:, 1], c=clf_predictions[:n_visualize])
-    ax[1].set_title("logreg classifications")
-    clf_acc = accuracy_score(y_val, clf_predictions)
-
-    print(f"classifier accuracy: {clf_acc}")
-
-
-    return best_r_score, clusterer, clf
-
-
 
 
 
@@ -216,15 +122,12 @@ def train_model(
     os.makedirs(f"{base_figure_dir}/latent", exist_ok=True)
     window_size = [window_dim, window_dim]
 
-    # Load echograms and create partition for train/test/val
-    echograms = get_echograms(frequencies=frequencies, minimum_shape=window_dim)
-
-    echograms_train, echograms_test, echograms_val = partition_data(echograms, partition, portion_train=0.85)
 
     # Set device
     device = torch.device(dev if torch.cuda.is_available() else "cpu")
     if verbose:
         print(f"device: {device}")
+
 
     model.to(device)
     if verbose:
@@ -241,77 +144,20 @@ def train_model(
     if verbose:
         print('num_workers: ', num_workers)
 
-    sample_options = {
-        "window_size": window_size,
-        "random_sample": False,
-    }
-
-    sample_options_train = {
-        "echograms": echograms_train,
-        **sample_options
-    }
-    sample_options_test = {
-        "echograms": echograms_test,
-        **sample_options
-    }
-
-    
-    sampler_probs = [100, 100, 5, 5, 5, 5]
-    label_types = [1, 27]
-
-    samplers_train = [
-        Background(**sample_options_train, sample_probs=sampler_probs[0]),
-        Seabed(**sample_options_train, sample_probs=sampler_probs[1]),
-        Shool(**sample_options_train, fish_type=27, sample_probs=sampler_probs[2]),
-        Shool(**sample_options_train, fish_type=1, sample_probs=sampler_probs[3]),    
-        ShoolSeabed(**sample_options_train, fish_type=27, sample_probs=sampler_probs[4]),
-        ShoolSeabed(**sample_options_train, fish_type=1, sample_probs=sampler_probs[5])
-    ]
-    samplers_test = [
-        Background(**sample_options_test, sample_probs=sampler_probs[0]),
-        Seabed(**sample_options_test, sample_probs=sampler_probs[1]),
-        Shool(**sample_options_test, fish_type=27, sample_probs=sampler_probs[2]),
-        Shool(**sample_options_test, fish_type=1, sample_probs=sampler_probs[3]),    
-        ShoolSeabed(**sample_options_test, fish_type=27, sample_probs=sampler_probs[4]),
-        ShoolSeabed(**sample_options_test, fish_type=1, sample_probs=sampler_probs[5])
-    ]
+    dataloader_train, dataloader_test, dataset_train, dataset_test, ehograms_train, echograms_test = get_datasets(
+        frequencies=frequencies, 
+        window_dim=window_dim, 
+        partition=partition, 
+        batch_size=batch_size, 
+        iterations=iterations, 
+        num_workers=num_workers,
+        include_depthmap=True
+    )
 
 
-    augmentation = CombineFunctions([])
-    label_transform = CombineFunctions([index_0_1_27, relabel_with_threshold_morph_close])
-    #if recon_criterion == "MSE":
-    #    # if recon criterion is mse we want the domain to be -1 - 1
-    #    data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm_MSE])
-    #else:
     data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm])
 
-    transform_functions = {
-        "augmentation_function": augmentation,
-        "label_transform_function": label_transform,
-        "data_transform_function": data_transform
-    }
-
-    dataset_arguments = [window_size, frequencies, batch_size * iterations]
-    test_dataset_arguments = [window_size, frequencies, 1000]
-
-    dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=True)
-    dataset_test = Dataset(samplers_test, *test_dataset_arguments, si=True, **transform_functions, include_depthmap=True)
-
-    dataloader_arguments = {
-        "batch_size": batch_size, 
-        "shuffle": False, 
-        "num_workers":num_workers, 
-        "worker_init_fn": np.random.seed
-    }
-
-    test_dataloader_arguments = {
-        **dataloader_arguments,
-        "batch_size": 1000
-    }
-
-    dataloader_train = DataLoader(dataset_train, **dataloader_arguments)
-    dataloader_test = DataLoader(dataset_test, **test_dataloader_arguments)
-
+    
     _, (inputs_test, labels_test, si_test) = next(enumerate(dataloader_test))
     inputs_test = inputs_test.float().to(device)
     labels_test = labels_test.long().to(device)
@@ -370,7 +216,7 @@ def train_model(
 
             img = tile_sampling(samples.detach(), 3)
             fig, ax = plt.subplots(1, 1)
-            ax.imshow(img, aspect="auto")
+            ax.imshow(img, aspect="auto", cmap="gray")
             recon_image_fn = f"{base_figure_dir}/samples/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
             fig.suptitle(recon_image_fn)
             fig.savefig(recon_image_fn)
@@ -378,7 +224,7 @@ def train_model(
 
             img = tile_recon(inputs_train, x_recon, labels_train, 3)
             fig, ax = plt.subplots(1, 1)
-            ax.imshow(img, aspect="auto")
+            ax.imshow(img, aspect="auto", cmap="gray")
             recon_image_fn = f"{base_figure_dir}/recon/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
             fig.suptitle(recon_image_fn)
             fig.savefig(recon_image_fn)
@@ -449,7 +295,7 @@ def train_model(
 
 
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    best_r_score, cm, clf = validate_clustering(model, HDBSCAN(prediction_data=True), clustering_params, inputs_test, si_test, samplers_test, device, model.capacity, variational_beta, fig_path=fig_path)
+    best_r_score, cm, clf = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path)
     grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
     make_grid(echograms_test[1], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
 
@@ -479,13 +325,15 @@ if __name__ == '__main__':
 
     model_cfg = config["model"]
     data_params = config["data_params"]
+    data_params["base_figure_dir"] = f"{data_params['base_figure_dir']}/{config['model_name']}"
 
     parameters_to_search = {"capacity": model_cfg["capacity"], "variational_beta": data_params["variational_beta"]}
     for current_param in ParameterGrid(parameters_to_search):
         np.random.seed(42)
+
         model_cfg = {**model_cfg, "capacity": current_param["capacity"]}
         path_model_params_save = f"/acoustic/{config['model_name']}_trained:c{current_param['capacity']}:b:{current_param['variational_beta']}.pt"
-        data_params = {**data_params, "path_model_params_save": path_model_params_save, "variational_beta": current_param["variational_beta"]} 
+        data_params = {**data_params, "path_model_params_save": path_model_params_save, "variational_beta": current_param["variational_beta"], } 
         model_cfg["window_dim"] = config["data_params"]["window_dim"]
         model = vae_models[config["model_name"]](**model_cfg)
 

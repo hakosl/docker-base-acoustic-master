@@ -39,8 +39,15 @@ run:
 bash:
 	$(RUNCMD) bash
 
+runpy:
+	$(RUNCMD) python3 $(C)
+
 vae:
 	$(RUNCMD) python3 train_vae.py --config=config/vae_train.yaml
+
+
+aae:
+	$(RUNCMD) python3 train_aae.py $(d) 
 
 
 vae-ftest:

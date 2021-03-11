@@ -45,7 +45,12 @@ class Shool(Sampler):
             raise EmptyListOfEchograms('fish_type not found in any echograms')
     
     def get_name(self):
-        return f"{self.__class__.__name__}, fish_type: {self.fish_type}"
+        if self.fish_type == 27:
+            return f"{self.__class__.__name__}, Sandeel"
+        elif self.fish_type == 1:
+            return f"{self.__class__.__name__}, Other"
+        else:
+            return f"{self.__class__.__name__}, fish_type: {self.fish_type}"
 
     def get_label(self):
         if self.fish_type == 1:
