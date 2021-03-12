@@ -1,4 +1,4 @@
-model_name: "InfoVAE" # "InfoVAE" or "vanilla_vae"
+model_name: "InfoVAEcd " # "InfoVAE" or "vanilla_vae"
 model:
   capacity: [2, 8, 16] # [32, 64, 128, 256, 512]
   kernel_size: 4

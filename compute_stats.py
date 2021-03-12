@@ -5,6 +5,7 @@ dataloader_train, dataloader_test, dataset_train, dataset_test, echograms_train,
 
 sums = torch.Tensor(4)
 sumsq = torch.Tensor(4)
+print("reached for loop")
 for (x, _, _) in dataloader_train:
     x = x.float()
     sums += torch.sum(x.transpose(0, 1).reshape(4, -1), axis=1)
@@ -12,5 +13,5 @@ for (x, _, _) in dataloader_train:
 
 dlen = len(dataloader_train) * 64 * 64
 mean = sums / dlen
-std = torch.sqrt(sumsq - torch.true_divide(sums * sums, dlen))/(dlen - 1)
+std = torch.sqrt(sumsq - torch.div(sums * sums, dlen))/(dlen - 1)
 print(mean.item(), std.item())
