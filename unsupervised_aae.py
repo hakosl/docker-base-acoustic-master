@@ -1,13 +1,11 @@
-# code adapted from paper https://arxiv.org/pdf/1511.05644.pdf
-# https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/aae
-# 
-
+# code adapted from https://github.com/shaharazulay/adversarial-autoencoder-classifier
 import argparse
 import os
 import numpy as np
 import math
 import itertools
 
+from time import time
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
 from torch.utils.data import DataLoader
@@ -19,6 +17,7 @@ import torch.nn.functional as F
 import torch
 import ptvsd
 from hdbscan import HDBSCAN
+from itertools import cycle
 
 from visualization.validate_clustering import validate_clustering
 from utils.data_utils import get_datasets
@@ -33,6 +32,7 @@ parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first 
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
 parser.add_argument("--latent_dim", type=int, default=10, help="dimensionality of the latent code")
+parser.add_argument("--n_categories", type=int, default=4, help="number of classes")
 parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=4, help="number of image channels")
 parser.add_argument("--sample_interval", type=int, default=300, help="interval between image sampling")
@@ -53,10 +53,10 @@ if opt.debug:
     except OSError as exc:
         print(exc)
 
-os.makedirs("output/aae", exist_ok=True)
-os.makedirs("output/aae/samples", exist_ok=True)
-os.makedirs("output/aae/reconstruction", exist_ok=True)
-os.makedirs("output/aae/clustering", exist_ok=True)
+os.makedirs("output/semi_aae", exist_ok=True)
+os.makedirs("output/semi_aae/samples", exist_ok=True)
+os.makedirs("output/semi_aae/reconstruction", exist_ok=True)
+os.makedirs("output/semi_aae/clustering", exist_ok=True)
 img_shape = (opt.channels, opt.img_size, opt.img_size)
 
 cuda = True if torch.cuda.is_available() else False
@@ -69,28 +69,37 @@ def reparameterization(mu, logvar):
     z = sampled_z * std + mu
     return z
 
-
+encoder_model_path = "/acoustic/aae_semi_supervised.pt"
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, img_shape, layer_size, n_categories, latent_dim):
         super(Encoder, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(int(np.prod(img_shape)), opt.layer_size),
-            nn.Dropout(p=0.2),
+            nn.Linear(int(np.prod(img_shape)), layer_size),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(opt.layer_size, opt.layer_size),
-            nn.BatchNorm1d(opt.layer_size),
+            nn.Linear(layer_size, layer_size),
+            nn.BatchNorm1d(layer_size),
             nn.LeakyReLU(0.2, inplace=True),
         )
 
-        self.mu = nn.Linear(opt.layer_size, opt.latent_dim)
-        self.logvar = nn.Linear(opt.layer_size, opt.latent_dim)
+        self.mu = nn.Linear(layer_size, latent_dim)
+        self.cat = nn.Sequential(
+            nn.Linear(layer_size, n_categories),
+            nn.Softmax(dim=1)
+        )
 
     def forward(self, img):
         img_flat = img.view(img.shape[0], -1)
         x = self.model(img_flat)
-        mu = self.mu(x)
-        return mu
+        z = self.mu(x)
+        y = self.cat(x)
+        return z, y
+
+    def save(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
 
 
 class Decoder(nn.Module):
@@ -98,7 +107,7 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(opt.latent_dim, opt.layer_size),
+            nn.Linear(opt.latent_dim + opt.n_categories, opt.layer_size),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(opt.layer_size, opt.layer_size),
             nn.BatchNorm1d(opt.layer_size),
@@ -130,42 +139,72 @@ class Discriminator(nn.Module):
         validity = self.model(z)
         return validity
 
+class Discriminator_cat(nn.Module):
+    def __init__(self):
+        super(Discriminator_cat, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(opt.n_categories, opt.layer_size),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(opt.layer_size, 256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(256, 1),
+            nn.Sigmoid(),
+        )
+    def forward(self, z):
+        return self.model(z)
+
 
 # Use binary cross-entropy loss
 adversarial_loss = torch.nn.BCELoss()
 pixelwise_loss = torch.nn.L1Loss()
 
 # Initialize generator and discriminator
-encoder = Encoder()
+encoder = Encoder(img_shape, opt.layer_size, opt.n_categories, opt.latent_dim)
 decoder = Decoder()
 discriminator = Discriminator()
+discriminator_cat = Discriminator_cat()
 
 if cuda:
     encoder.cuda()
     decoder.cuda()
     discriminator.cuda()
+    discriminator_cat.cuda()
     adversarial_loss.cuda()
     pixelwise_loss.cuda()
+
+start_time = time()
 
 (dataloader_train, dataloader_test, 
 dataset_train, dataset_test, 
 echograms_train, echograms_test) = get_datasets(
     frequencies=[18, 38, 120, 200], 
     iterations=3000, 
+    batch_size=100,
     num_workers=0, 
     include_depthmap=False)
+end_time = time()
 
+print(f"time taken to load dataset {end_time - start_time}")
 
 _, (inputs_test, labels_test, si_test) = next(enumerate(dataloader_test))
 inputs_test = inputs_test.float().to(device)
 labels_test = labels_test.long().to(device)
 
+_, (inputs_tr, labels_tr, si_tr) = next(enumerate(dataloader_train))
+inputs_tr = inputs_tr.float().to(device)
+labels_tr = labels_tr.long().to(device)
+lab_dataloader = DataLoader(list(zip(inputs_test[:100], labels_test[:100], si_test[:100])), 100)
+
 # Optimizers
 optimizer_G = torch.optim.Adam(
     itertools.chain(encoder.parameters(), decoder.parameters()), lr=opt.lr, betas=(opt.b1, opt.b2)
 )
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-
+optimizer_D = torch.optim.Adam(
+    itertools.chain(discriminator.parameters(), discriminator_cat.parameters()), 
+    lr=opt.lr, 
+    betas=(opt.b1, opt.b2)
+)
+optimizier_classifier = torch.optim.Adam(encoder.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
 
@@ -174,26 +213,49 @@ def sample_image(n_row, batches_done):
     # Sample noise
     z = Variable(Tensor(np.random.normal(0, 1, (n_row ** 2, opt.latent_dim))))
     gen_imgs = decoder(z)
-    save_image(gen_imgs[:, 0].reshape(-1, 1, 64, 64).data, "output/aae/samples/%d.png" % batches_done, nrow=10, normalize=True)
+    save_image(gen_imgs[:, 0].reshape(-1, 1, 64, 64).data, "output/semi_aae/samples/%d.png" % batches_done, nrow=10, normalize=True)
 
 def save_recon(original_image, reconstruction, batches_done, nrow):
-    save_image(reconstruction[:, 0].reshape(-1, 1, 64, 64).data, "output/aae/reconstruction/%d.png" % batches_done, nrow=10, normalize=True)
+    save_image(reconstruction[:, 0].reshape(-1, 1, 64, 64).data, "output/semi_aae/reconstruction/%d.png" % batches_done, nrow=10, normalize=True)
+
 # ----------
 #  Training
 # ----------
+def sample_categorical(batch_size, n_classes=4, p=None):
+    '''
+     Sample from a categorical distribution
+     of size batch_size and # of classes n_classes
+     In case stated, a sampling probability given by p is used.
+     return: torch.autograd.Variable with the sample
+    '''
+    #cat = np.random.randint(0, n_classes, batch_size)
+    cat = np.random.choice(range(n_classes), size=batch_size, p=p)
+    cat = np.eye(n_classes)[cat].astype('float32')
+    cat = torch.from_numpy(cat)
+    return Variable(cat.type(Tensor))
 
-class AAE:
-    def __init__(self):
-        
-        
+
+class AAESS(nn.Module):
+    def __init__(self, encoder, decoder):
+        super(AAESS, self).__init__()
+        self.encoder_obj = encoder
         self.decoder = decoder
-        self.discriminator = discriminator
+        
+        
     def encoder(self, x):
-        z = encoder(x)
+        z, y = self.encoder_obj(x)
         return z, z
 
-#validate_clustering(AAE(), HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, opt.latent_dim, 0, fig_path="output/aae/clustering/hdbscan.png")
-for i, (imgs, imgs_train, si) in enumerate(dataloader_train):
+    def classify(self, x):
+        z, y = self.encoder_obj(x)
+        return torch.argmax(y, dim=1)
+
+
+i = 0
+print(AAESS(encoder, decoder).__class__.__name__)
+validate_clustering(AAESS(encoder, decoder), HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, opt.latent_dim, 0, fig_path="output/aae/clustering/hdbscan.png")
+
+for ((imgs, l, _), (imgs_labeled, l, si)) in zip(dataloader_train, cycle(lab_dataloader)):
     # Adversarial ground truths
     valid = Variable(Tensor(imgs.shape[0], 1).fill_(1.0), requires_grad=False)
     fake = Variable(Tensor(imgs.shape[0], 1).fill_(0.0), requires_grad=False)
@@ -207,11 +269,11 @@ for i, (imgs, imgs_train, si) in enumerate(dataloader_train):
 
     optimizer_G.zero_grad()
 
-    encoded_imgs = encoder(real_imgs)
-    decoded_imgs = decoder(encoded_imgs)
+    z, y = encoder(real_imgs)
+    decoded_imgs = decoder(torch.cat((z, y), 1))
 
     # Loss measures generator's ability to fool the discriminator
-    g_loss = 0.001 * adversarial_loss(discriminator(encoded_imgs), valid) + 0.999 * pixelwise_loss(
+    g_loss = 0.001 * adversarial_loss(discriminator(z), valid) + 0.999 * pixelwise_loss(
         decoded_imgs, real_imgs
     )
 
@@ -225,29 +287,51 @@ for i, (imgs, imgs_train, si) in enumerate(dataloader_train):
     optimizer_D.zero_grad()
 
     # Sample noise as discriminator ground truth
-    z = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim))))
-
+    z_r = Variable(Tensor(np.random.normal(0, 5, (imgs.shape[0], opt.latent_dim))))
+    y_r = sample_categorical(imgs.shape[0], opt.n_categories)
     # Measure discriminator's ability to classify real from generated samples
-    real_loss = adversarial_loss(discriminator(z), valid)
-    fake_loss = adversarial_loss(discriminator(encoded_imgs.detach()), fake)
-    d_loss = 0.5 * (real_loss + fake_loss)
+    real_loss = adversarial_loss(discriminator(z_r), valid)
+    fake_loss = adversarial_loss(discriminator(z.detach()), fake)
+    real_loss_cat = adversarial_loss(discriminator_cat(y_r), valid)
+    fake_loss_cat = adversarial_loss(discriminator_cat(y.detach()), fake)
+
+    d_loss = 0.25 * (real_loss + fake_loss + real_loss_cat + fake_loss_cat)
 
     d_loss.backward()
     optimizer_D.step()
 
-    print(
-        "[Batch %d/%d] [D loss: %f] [G loss: %f]"
-        % (i, len(dataloader_train), d_loss.item(), g_loss.item())
-    )
+
+    #
+    # semi supervised phase
+    #
+
+    optimizier_classifier.zero_grad()
+
+
+    imgs_labeled_c = Variable(imgs_labeled.type(Tensor)).cuda()
+    si = Variable(si.type(Tensor)).cuda().long()
+
+    _, pred = encoder(imgs_labeled_c)
+    classifier_loss = F.cross_entropy(pred, si)
+    classifier_loss.backward()
+    optimizier_classifier.step()
+
+
+    optimizier_classifier.zero_grad()
+    if i % 10 == 0:
+        print(
+            f"[Batch {i}/{len(dataloader_train)}] [D loss: {d_loss.item()}] [G loss: {g_loss.item()}] [C loss: {classifier_loss.item()}]"
+        )
 
     batches_done = i
 
-    #sample_image(n_row=10, batches_done=batches_done)
     if batches_done % opt.sample_interval == 0:
-        sample_image(n_row=10, batches_done=batches_done)
+        #sample_image(n_row=10, batches_done=batches_done)
         save_recon(real_imgs, decoded_imgs, batches_done=batches_done, nrow=10)
+    i += 1
 
-validate_clustering(AAE(), HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, opt.latent_dim, 0, fig_path="output/aae/clustering/hdbscan.png")
+validate_clustering(AAESS(encoder, decoder), HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, opt.latent_dim, 0, fig_path="output/aae/clustering/hdbscan.png")
+encoder.save(encoder_model_path)
 
 """
 X * X * X * *

@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.cluster import DBSCAN
 
 from sklearn.model_selection import ParameterGrid
-from sklearn.metrics import adjusted_rand_score
+from sklearn.metrics import adjusted_rand_score, rand_score
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
@@ -34,7 +34,8 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
     clusterer.fit(latent_mus)
     best_labels = clusterer.labels_
 
-    best_r_score = adjusted_rand_score(best_labels, sample_indexes)
+    best_r_score = rand_score(best_labels, sample_indexes)
+    #r_score = adjusted_rand_score(best_labels, sample_indexes)
 
     pca = PCA(n_components=2, random_state = 42).fit(latent_mus)   
     me = pca.transform(latent_mus)
@@ -44,7 +45,7 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
     ax[0].scatter(me[:n_visualize][:, 0], me[:n_visualize][:, 1], c=best_labels[:n_visualize])
     ax[0].set_title("DBSCAN clusters")
 
-    colors = ["r", "g", "b", "tab:orange", "purple", "cyan"]
+    colors = np.array(["r", "g", "b", "tab:orange", "purple", "cyan"])
     for si in np.unique(sample_indexes[:n_visualize]):
         sm = sample_indexes[:n_visualize] == si
         ax[2].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(samplers_test[:n_visualize][si]))
@@ -60,18 +61,28 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
 
     
     #clf = make_pipeline(StandardScaler(), SVC(gamma="auto"))
-    clf.fit(X_train, y_train)
+    if False and model.__class__.__name__ == "AAESS":
+        clf_predictions = model.classify(test_inputs).data.cpu().numpy()
+        z, z = model.encoder(test_inputs)
 
-    clf_predictions = clf.predict(X_val)
+        pca_transformed = pca.transform(z.data.cpu().numpy()) 
+        print(f"why {clf_predictions.shape}")
+        ax[1].scatter(pca_transformed[:n_visualize][:, 0], pca_transformed[:n_visualize][:, 1], c=colors[clf_predictions[:n_visualize]])
+        ax[1].set_title("AAE semi supervised classifications")
+        clf_acc = accuracy_score(sample_indexes, clf_predictions)
+    else:
+        clf.fit(X_train, y_train)
 
-    X_val = pca.transform(X_val) 
+        clf_predictions = clf.predict(X_val)
 
-    ax[1].scatter(X_val[:n_visualize][:, 0], X_val[:n_visualize][:, 1], c=clf_predictions[:n_visualize])
-    ax[1].set_title("logreg classifications")
-    clf_acc = accuracy_score(y_val, clf_predictions)
+        X_val = pca.transform(X_val) 
+
+        ax[1].scatter(X_val[:n_visualize][:, 0], X_val[:n_visualize][:, 1], c=colors[clf_predictions[:n_visualize]])
+        ax[1].set_title("SVM RBF classifications")
+        clf_acc = accuracy_score(y_val, clf_predictions)
 
     
-    fig.suptitle(f"cap: {capacity} beta: {vb} r_score: {best_r_score}")
+    fig.suptitle(f"cap: {capacity} beta: {vb} r_score: {best_r_score}, classifier accuracy: {clf_acc}")
     fig.savefig(fig_path)
     plt.close(fig)
 

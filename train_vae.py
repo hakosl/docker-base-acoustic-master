@@ -297,7 +297,7 @@ def train_model(
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
     best_r_score, cm, clf = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path)
     grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    make_grid(echograms_test[1], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
+    make_grid(echograms_test[5], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
 
     print(f"clustering figure saved to: {fig_path}")
     print(f"r_score: {best_r_score}")

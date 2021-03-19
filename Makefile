@@ -27,7 +27,7 @@ RUNCMD=docker run $(RUNTIME) --rm --network=host --user $(USERID):$(GROUPID) $(I
 
 # Replace 'bash' with the command you want to do
 default: .docker
-	$(RUNCMD) $(COMMAND)
+	$(RUNCMD) python3 $(C) $(d)
 
 # requires CONFIG=jupyter
 jupyter:
@@ -48,6 +48,10 @@ vae:
 
 aae:
 	$(RUNCMD) python3 train_aae.py $(d) 
+
+
+aaess:
+	$(RUNCMD) python3 unsupervised_aae.py $(d) 
 
 
 vae-ftest:

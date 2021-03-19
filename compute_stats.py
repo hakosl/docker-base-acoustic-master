@@ -1,7 +1,7 @@
 import torch
 from utils.data_utils import get_datasets
-
-dataloader_train, dataloader_test, dataset_train, dataset_test, echograms_train, echograms_test = get_datasets(include_depthmap=False, num_workers=0)
+print("this is before loading data")
+dataloader_train, dataloader_test, dataset_train, dataset_test, echograms_train, echograms_test = get_datasets(include_depthmap=False)
 
 sums = torch.Tensor(4)
 sumsq = torch.Tensor(4)

@@ -25,7 +25,7 @@ class Encoder(nn.Module):
         self.convolutions = [
             nn.Sequential(
                 nn.Conv2d(in_channels=self.hdim[i], out_channels=self.hdim[i + 1], kernel_size=kernel_size, stride=stride, padding=1),
-                #nn.BatchNorm2d(self.hdim[i + 1]),
+                nn.BatchNorm2d(self.hdim[i + 1]),
                 nn.ReLU()
             ) 
             for i in range(len(self.hdim) - 1)
@@ -164,7 +164,7 @@ class VariationalAutoencoder(nn.Module):
         # and the distribution estimated by the generator for the given image.
         kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
 
-        return recon_loss + variational_beta * kldivergence, recon_loss, kldivergence
+        return recon_loss + variational_beta * kldivergence, recon_loss, variational_beta * kldivergence
 
 def datapVAE(*args, **kwargs):
     return nn.DataParallel(VariationalAutoencoder(*args, **kwargs))

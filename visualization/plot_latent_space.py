@@ -4,6 +4,7 @@ import matplotlib
 import numpy as np
 import imageio
 import seaborn
+from sklearn.decomposition import PCA
 def plot_latent_space(latent_mu, logvar, labels_train, path):
     np_latent_mu = latent_mu.cpu().detach().numpy()
     np_logvar = logvar.cpu().detach().numpy()
@@ -14,8 +15,11 @@ def plot_latent_space(latent_mu, logvar, labels_train, path):
     axs[0, 0].set_title("mu density")
     axs[0, 1].set_title("logvar density")
     colors = np.array(["r", "g", "b", "tab:orange", "purple", "cyan", "y"]) 
-    axs[np_logvar.shape[1], 0].scatter(np_latent_mu[:, 0], np_latent_mu[:, 1], c=colors[labels_train])
-    axs[np_logvar.shape[1], 1].scatter(np_logvar[:, 0], np_logvar[:, 1], c=colors[labels_train])
+
+    pca_latent_mu = PCA(n_components=2).fit_transform(np_latent_mu)
+    pca_latent_lv = PCA(n_components=2).fit_transform(np_logvar)
+    axs[np_logvar.shape[1], 0].scatter(pca_latent_mu[:, 0], pca_latent_mu[:, 1], c=colors[labels_train])
+    axs[np_logvar.shape[1], 1].scatter(pca_latent_lv[:, 0], pca_latent_lv[:, 1], c=colors[labels_train])
     for i in range(np_latent_mu.shape[1]):
         
         mi, ma, std = np_latent_mu[:, i].min(), np_latent_mu[:, i].max(), np_latent_mu[:, i].std()
