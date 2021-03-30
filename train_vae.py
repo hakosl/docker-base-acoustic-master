@@ -10,6 +10,7 @@ import time
 import itertools
 import os
 import ptvsd
+import json
 
 import seaborn
 from sklearn.metrics import accuracy_score
@@ -45,11 +46,11 @@ from batch.label_transform_functions.relabel_with_threshold_morph_close import r
 from batch.combine_functions import CombineFunctions
 from models.vae_models import vae_models
 from visualization.vae_loss_vis import vae_loss_visualization
-from utils.logger import TensorboardLogger
 import models.unet_bn_sequential_db as models
 from visualization.plot_latent_space import plot_latent_space, plot_latent_space_gif
 from visualization.validate_clustering import validate_clustering
 from sklearn.cluster import KMeans
+from torch.utils.tensorboard import SummaryWriter
 
 from utils.data_utils import get_datasets
 
@@ -65,8 +66,93 @@ parser.add_argument("--debugger", "-d",
     action="store_true",
     help="run the program with debugger server running")
 
+def save_recon(
+    model, 
+    inputs_train, 
+    x_recon, 
+    labels_train, 
+    dev, 
+    base_figure_dir, 
+    recon_criterion, 
+    variational_beta,
+    i,
+    writer
+    ):
+    samples = model.sample(3, dev)
 
+    img = tile_sampling(samples.detach(), 3)
+    writer.add_image("samples", img, i, dataformats="HW")
+    fig, ax = plt.subplots(1, 1)
+    ax.imshow(img, aspect="auto", cmap="gray")
+    recon_image_fn = f"{base_figure_dir}/samples/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+    fig.suptitle(recon_image_fn)
+    fig.savefig(recon_image_fn)
+    plt.close(fig)
 
+    img = tile_recon(inputs_train, x_recon, labels_train, 3)
+    writer.add_image("reconstruction", img, i, dataformats="HW")
+    fig, ax = plt.subplots(1, 1)
+    ax.imshow(img, aspect="auto", cmap="gray")
+    recon_image_fn = f"{base_figure_dir}/recon/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+    fig.suptitle(recon_image_fn)
+    fig.savefig(recon_image_fn)
+    plt.close(fig)
+
+def print_loss_save_latent(
+    model, 
+    inputs_test, 
+    start_time, 
+    i, 
+    iterations, 
+    base_figure_dir, 
+    recon_criterion, 
+    variational_beta, 
+    running_loss_train, 
+    running_recon_loss, 
+    running_kl_loss, 
+    log_step,
+    losses,
+    recon_losses,
+    kl_losses,
+    iteration,
+    device,
+    si_test,
+    latent_image_fns,
+    verbose,
+    writer=None):
+    x_recon_test, mu_test, logvar_test = model(inputs_test.float().to(device))
+    latent_image_fn = f"{base_figure_dir}/latent/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
+
+    plot_latent_space(mu_test, logvar_test, si_test, latent_image_fn, writer)
+    latent_image_fns.append(latent_image_fn)
+
+    current_time = time.time()
+
+    delta = current_time - start_time
+    est_remaining = (delta / i) * (iterations - i) 
+    if verbose:
+        print(
+            f"{'-'*5} " 
+            f"progress: {int(((i + 1) / iterations) * 100):3}% "
+            f"loss: {(running_loss_train / log_step):8.2e} "
+            f"recon: {running_recon_loss / log_step:8.2e} "
+            f"kl: {running_kl_loss / log_step:5.2e} "
+            f"time_elapsed: {delta:7.2f} "
+            f"remaining: {est_remaining:7.2f} "
+            f"{'-'*5}"
+        )
+    
+    losses.append(running_loss_train / log_step)
+    recon_losses.append(running_recon_loss / log_step)
+    kl_losses.append(running_kl_loss / log_step)
+    iteration.append(i)
+
+    return delta
+    
+def label_nr_to_string(nr):
+    labels = np.array(["background", "seabed", "other", "sandeel"])
+
+    return labels[np.array(nr)] 
 # Train model
 def train_model(
         model,
@@ -122,7 +208,7 @@ def train_model(
     os.makedirs(f"{base_figure_dir}/latent", exist_ok=True)
     window_size = [window_dim, window_dim]
 
-
+    writer = SummaryWriter(comment=f"/ {model} variationalbeta {variational_beta}")
     # Set device
     device = torch.device(dev if torch.cuda.is_available() else "cpu")
     if verbose:
@@ -135,7 +221,6 @@ def train_model(
     if load_pre_trained:
         model.load_state_dict(torch.load(path_model_params_load, map_location=device))
 
-    logger = TensorboardLogger('cogmar_test')
 
     criterion = model.loss
     optimizer = optim.Adam(model.parameters())
@@ -144,7 +229,7 @@ def train_model(
     if verbose:
         print('num_workers: ', num_workers)
 
-    dataloader_train, dataloader_test, dataset_train, dataset_test, ehograms_train, echograms_test = get_datasets(
+    dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, ehograms_train, echograms_test, echograms_val = get_datasets(
         frequencies=frequencies, 
         window_dim=window_dim, 
         partition=partition, 
@@ -161,6 +246,8 @@ def train_model(
     _, (inputs_test, labels_test, si_test) = next(enumerate(dataloader_test))
     inputs_test = inputs_test.float().to(device)
     labels_test = labels_test.long().to(device)
+
+    
     start_time = time.time()
 
 
@@ -182,9 +269,9 @@ def train_model(
     for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
         # Load train data and transfer from numpy to pytorch
         #print(inputs_train)
+
         inputs_train = inputs_train.float().to(device)
         labels_train = labels_train.long().to(device)
-
 
         # Forward + backward + optimize
         model.train()
@@ -204,60 +291,25 @@ def train_model(
 
 
         optimizer.step()
-
         # Update loss count for train set
+        writer.add_scalar("Loss/train", loss_train.item(), i)
+        writer.add_scalar("Loss/train_kl", kl_loss.item(), i)
+        writer.add_scalar("Loss/train_recon", recon_loss.item(), i)
+
+
         running_loss_train += loss_train.item()
         running_recon_loss += recon_loss.item()
         running_kl_loss += kl_loss.item()
-        
+        model.zero_grad()
         # Log loss and accuracy
-        if (i) % 1000 == 0:
-            samples = model.sample(3, dev)
+        if (i) % (log_step*10) == 0:
+            save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
+            best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=None, i=i, save_plot=False, writer=writer)
 
-            img = tile_sampling(samples.detach(), 3)
-            fig, ax = plt.subplots(1, 1)
-            ax.imshow(img, aspect="auto", cmap="gray")
-            recon_image_fn = f"{base_figure_dir}/samples/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
-            fig.suptitle(recon_image_fn)
-            fig.savefig(recon_image_fn)
-            plt.close(fig)
-
-            img = tile_recon(inputs_train, x_recon, labels_train, 3)
-            fig, ax = plt.subplots(1, 1)
-            ax.imshow(img, aspect="auto", cmap="gray")
-            recon_image_fn = f"{base_figure_dir}/recon/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
-            fig.suptitle(recon_image_fn)
-            fig.savefig(recon_image_fn)
-            plt.close(fig)
+            writer.add_scalar("Accuracy/svm", clf_acc, i)
+            writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
         if (i + 1) % log_step == 0:
-
-            x_recon_test, mu_test, logvar_test = model(inputs_test.float().to(device))
-            latent_image_fn = f"{base_figure_dir}/latent/r{recon_criterion}:i:{i}c:{model.capacity}b:{variational_beta}.png"
-
-            plot_latent_space(mu_test, logvar_test, si_test, latent_image_fn)
-            latent_image_fns.append(latent_image_fn)
-
-            current_time = time.time()
-
-            delta = current_time - start_time
-            est_remaining = (delta / i) * (iterations - i) 
-            if verbose:
-                print(
-                    f"{'-'*5} " 
-                    f"progress: {int(((i + 1) / iterations) * 100):3}% "
-                    f"loss: {(running_loss_train / log_step):8.2e} "
-                    f"recon: {running_recon_loss / log_step:8.2e} "
-                    f"kl: {running_kl_loss / log_step:5.2e} "
-                    f"time_elapsed: {delta:7.2f} "
-                    f"remaining: {est_remaining:7.2f} "
-                    f"{'-'*5}"
-                )
-            
-            losses.append(running_loss_train / log_step)
-            recon_losses.append(running_recon_loss / log_step)
-            kl_losses.append(running_kl_loss / log_step)
-            iteration.append(i)
-            
+            delta = print_loss_save_latent(model, inputs_test, start_time, i, iterations, base_figure_dir, recon_criterion, variational_beta, running_loss_train, running_recon_loss, running_kl_loss, log_step, losses, recon_losses, kl_losses, iteration, device, si_test, latent_image_fns, verbose)
             if best_val_loss > running_loss_train:
                 best_val_loss = running_loss_train
                 
@@ -274,6 +326,7 @@ def train_model(
 
             else:
                 if i > best_val_iteration + patience:
+                    save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
                     break
 
 
@@ -295,13 +348,24 @@ def train_model(
 
 
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    best_r_score, cm, clf = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path)
+    best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path, i=i, writer=writer)
+
     grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    make_grid(echograms_test[5], model, cm, clf, device, data_transform, 64, path=grid_fig_path)
+    make_grid(echograms_test[5], model, cm, clf, device, data_transform, window_dim, path=grid_fig_path)
 
     print(f"clustering figure saved to: {fig_path}")
     print(f"r_score: {best_r_score}")
-    return best_r_score
+
+    writer.add_hparams({"model_name": model.__class__.__name__, "capacity": model.capacity, "variational_beta": variational_beta}, {"svm_accuracy": clf_acc, "adjusted_rand_score": best_r_score, "loss_train": loss_train.item()})
+    writer.add_graph(model, inputs_test[:10])
+    writer.add_embedding(model.encoder(inputs_test)[0], metadata=label_nr_to_string(si_test), label_img=inputs_test[:, 0:1])
+
+    writer.add_scalar("Accuracy/svm", clf_acc, i)
+    writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
+
+    writer.flush()
+    writer.close()
+    return best_r_score, clf_acc, cm, clf, delta, i
 
 
 if __name__ == '__main__':
@@ -328,6 +392,7 @@ if __name__ == '__main__':
     data_params["base_figure_dir"] = f"{data_params['base_figure_dir']}/{config['model_name']}"
 
     parameters_to_search = {"capacity": model_cfg["capacity"], "variational_beta": data_params["variational_beta"]}
+    score_grid = {}
     for current_param in ParameterGrid(parameters_to_search):
         np.random.seed(42)
 
@@ -337,9 +402,20 @@ if __name__ == '__main__':
         model_cfg["window_dim"] = config["data_params"]["window_dim"]
         model = vae_models[config["model_name"]](**model_cfg)
 
-        r_score = train_model(
+        r_score, clf_acc, clusterer, classifier, tr_time, iterations = train_model(
             model=model,
             **data_params
         )
+        score_grid[f"type:{config['model_name']};capacity:{current_param['capacity']};variational_beta:{current_param['variational_beta']}"] = {
+            "clustering_score": r_score, 
+            "clf_accuracy": clf_acc, 
+            "clustering_params": str(clusterer).replace("\n    ", " "), 
+            "classifier params": str(classifier).replace("\n    ", " "), 
+            "training_time": tr_time,
+            "iterations": iterations
+        }
         print(f"r score: {r_score} model_params: {current_param}")
-   
+
+        with open(f"{data_params['base_figure_dir']}/res.json", "w") as jf:
+            json.dump(score_grid, jf, sort_keys=True, indent=2)
+    

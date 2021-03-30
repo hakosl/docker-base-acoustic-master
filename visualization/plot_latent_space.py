@@ -5,7 +5,8 @@ import numpy as np
 import imageio
 import seaborn
 from sklearn.decomposition import PCA
-def plot_latent_space(latent_mu, logvar, labels_train, path):
+eps = 1e-8
+def plot_latent_space(latent_mu, logvar, labels_train, path, writer):
     np_latent_mu = latent_mu.cpu().detach().numpy()
     np_logvar = logvar.cpu().detach().numpy()
     labels_train = labels_train.cpu().detach().numpy()
@@ -23,10 +24,9 @@ def plot_latent_space(latent_mu, logvar, labels_train, path):
     for i in range(np_latent_mu.shape[1]):
         
         mi, ma, std = np_latent_mu[:, i].min(), np_latent_mu[:, i].max(), np_latent_mu[:, i].std()
-        h = 1.06 * std / ((np_latent_mu.shape[0] ** (1 / 5)))          
+        h = 1.06 * std / ((np_latent_mu.shape[0] ** (1 / 5)))
+        h = max(h, eps)
         x = np.linspace(mi, ma, 200)
-        if h < 1e-10:
-            h = 1e-10
         kde = KernelDensity(kernel='gaussian', bandwidth=h).fit(np_latent_mu[:, i].reshape(-1, 1))
         
         x = np.linspace(mi, ma, 200)
@@ -55,8 +55,7 @@ def plot_latent_space(latent_mu, logvar, labels_train, path):
             
             mi, ma, std = np_latent_mu[:, i].min(), np_latent_mu[:, i].max(), np_latent_mu[:, i].std()
             h = 1.06 * std / ((np_latent_mu.shape[0] ** (1 / 5)))
-            if h < 1e-10:
-                h = 1e-10
+            h = max(h, eps)
             x = np.linspace(mi, ma, 200)
 
             kde = KernelDensity(kernel='gaussian', bandwidth=h).fit(np_latent_mu[labels_train==j, i].reshape(-1, 1))
@@ -68,6 +67,7 @@ def plot_latent_space(latent_mu, logvar, labels_train, path):
             mi, ma, std = np_logvar[:, i].min(), np_logvar[:, i].max(), np_logvar[:, i].std()
             h = 1.06 * std / ((np_latent_mu.shape[0] ** (1 / 5)))       
             x = np.linspace(mi, ma, 200)
+            
             kde = KernelDensity(kernel='gaussian', bandwidth=h).fit(np_logvar[labels_train==j, i].reshape(-1, 1))
             
 
@@ -80,6 +80,8 @@ def plot_latent_space(latent_mu, logvar, labels_train, path):
     plt.ylabel("Density")
     plt.xlabel("MU / logvar")
     fig.savefig(path)
+    if writer:
+        writer.add_figure("latent", fig, close=False)
     plt.close(fig)
 
 def plot_latent_space_gif(filenames, path):

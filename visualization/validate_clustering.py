@@ -9,13 +9,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.cluster import DBSCAN
 
 from sklearn.model_selection import ParameterGrid
-from sklearn.metrics import adjusted_rand_score, rand_score
+from sklearn.metrics import adjusted_rand_score
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 from models.sequential_network import SequentialNetwork
 
-def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, device, capacity, vb, fig_path="output/clustering.png", n_visualize=250):
+def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, device, capacity, vb, fig_path="output/clustering.png", i=0, n_visualize=250, save_plot=True, writer=None):
     enc = model.encoder
 
     
@@ -23,18 +23,17 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
     latent_logvars = []
     sample_indexes = []
     
-    latent_mu, latent_logvar = enc(test_inputs)
+    latent_mu, latent_logvar = enc(test_inputs.to(device))
     latent_mus = latent_mu.data.cpu().numpy()
     latent_logvars = latent_logvar.data.cpu().numpy()
     sample_indexes = si_test.data.cpu().numpy()
     
-    print(f"latent mu shape {latent_mus.shape}")
     latent_mus = latent_mus.reshape(latent_mus.shape[0], -1)
     #me = PCA(n_components=3, random_state = 42).fit_transform(latent_mus)
     clusterer.fit(latent_mus)
     best_labels = clusterer.labels_
 
-    best_r_score = rand_score(best_labels, sample_indexes)
+    best_r_score = adjusted_rand_score(best_labels, sample_indexes)
     #r_score = adjusted_rand_score(best_labels, sample_indexes)
 
     pca = PCA(n_components=2, random_state = 42).fit(latent_mus)   
@@ -53,7 +52,7 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
 
     ax[2].legend()
 
-    X_train, X_val, y_train, y_val = train_test_split(latent_mus, sample_indexes, test_size=0.2)
+    X_train, X_val, y_train, y_val, pca_transformed_train, pca_trainsformed = train_test_split(latent_mus, sample_indexes, me, test_size=0.2)
 
     clf = LogisticRegression(random_state=0, multi_class="auto")
     clf = SVC(decision_function_shape='ovo')
@@ -61,13 +60,9 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
 
     
     #clf = make_pipeline(StandardScaler(), SVC(gamma="auto"))
-    if False and model.__class__.__name__ == "AAESS":
+    if model.__class__.__name__ == "AAESS":
         clf_predictions = model.classify(test_inputs).data.cpu().numpy()
-        z, z = model.encoder(test_inputs)
-
-        pca_transformed = pca.transform(z.data.cpu().numpy()) 
-        print(f"why {clf_predictions.shape}")
-        ax[1].scatter(pca_transformed[:n_visualize][:, 0], pca_transformed[:n_visualize][:, 1], c=colors[clf_predictions[:n_visualize]])
+        ax[1].scatter(pca_transformed_train[:n_visualize][:, 0], pca_transformed_train[:n_visualize][:, 1], c=colors[clf_predictions[:n_visualize]])
         ax[1].set_title("AAE semi supervised classifications")
         clf_acc = accuracy_score(sample_indexes, clf_predictions)
     else:
@@ -83,13 +78,15 @@ def validate_clustering(model, clusterer, test_inputs, si_test, samplers_test, d
 
     
     fig.suptitle(f"cap: {capacity} beta: {vb} r_score: {best_r_score}, classifier accuracy: {clf_acc}")
-    fig.savefig(fig_path)
+    writer.add_figure("Clustering fig", fig, i, close=False)
+    if save_plot:
+        fig.savefig(fig_path)
     plt.close(fig)
+    if save_plot:
+        print(f"classifier accuracy: {clf_acc}")
 
-    print(f"classifier accuracy: {clf_acc}")
 
-
-    return best_r_score, clusterer, clf
+    return best_r_score, clusterer, clf, clf_acc
 
 
 

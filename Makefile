@@ -43,16 +43,27 @@ runpy:
 	$(RUNCMD) python3 $(C)
 
 vae:
-	$(RUNCMD) python3 train_vae.py --config=config/vae_train.yaml
+	$(RUNCMD) python3 train_vae.py 
 
+ivae:
+	$(RUNCMD) python3 train_vae.py -c=config/info_train.yaml
 
 aae:
 	$(RUNCMD) python3 train_aae.py $(d) 
 
 
 aaess:
-	$(RUNCMD) python3 unsupervised_aae.py $(d) 
+	CUDA_VISIBLE_DEVICES=1 $(RUNCMD) python3 unsupervised_aae.py $(d) 
 
 
 vae-ftest:
 	$(RUNCMD) python3 train_vae.py --config=config/vae_test_config.yaml $(d) 
+
+all:
+	$(RUNCMD) sh runall.sh
+
+profile:
+	$(RUNCMD) python3 -m cProfile -s time train_vae.py -c=config/vae_test_config.yaml
+
+tb:
+	$(RUNCMD) tensorboard --logdir=runs

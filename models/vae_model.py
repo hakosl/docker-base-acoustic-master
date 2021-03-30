@@ -13,11 +13,20 @@ import matplotlib.pyplot as plt
 from skimage import io, transform
 import numpy as np
 
+    
+class Reshape(torch.nn.Module):
+    def __init__(self, outer_shape):
+        super(Reshape, self).__init__()
+        self.outer_shape = outer_shape
+    def forward(self, x):
+        return x.view(x.size(0), *self.outer_shape)
+
 
 class Encoder(nn.Module):
-    def __init__(self, capacity, window_dim=64, hdim=None, stride=2, kernel_size=4, extra_layer=False, depth_input=False):
+    def __init__(self, capacity, window_dim=64, hdim=None, stride=2, kernel_size=4, extra_layer=False, depth_input=False, alt_model=False):
 
         super(Encoder, self).__init__()
+        self.alt_model = alt_model
         self.hdim = hdim
         self.capacity = capacity
         self.window_dim = window_dim
@@ -37,6 +46,7 @@ class Encoder(nn.Module):
         self.middle_layer = nn.Sequential(nn.Linear(in_features=self.latent_in_dim, out_features = middle_fc_dim), nn.ReLU())
 
         self.encoder = nn.Sequential(*self.convolutions)
+
         
         if extra_layer:
             self.latent_in_dim = middle_fc_dim
@@ -45,6 +55,27 @@ class Encoder(nn.Module):
 
         self.fc_mu = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
         self.fc_logvar = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
+
+
+        if self.alt_model:
+            self.encoder = nn.Sequential(
+                nn.Conv2d(in_channels=self.hdim[0], out_channels=20,kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                #nn.Conv2d(in_channels=20, out_channels=20,kernel_size=3, stride=2, padding=1),
+                #nn.ReLU(),
+                nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                #nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=2, padding=1),
+                #nn.ReLU(),
+                nn.Conv2d(in_channels=40, out_channels=60,kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                #nn.Conv2d(in_channels=60, out_channels=60,kernel_size=3, stride=2, padding=1),
+                #nn.ReLU(),
+            )
+            self.middle_layer = nn.Sequential(nn.Linear(in_features=self.window_dim*self.window_dim*60, out_features = self.latent_in_dim), nn.ReLU())
+
+            self.fc_mu = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
+            self.fc_logvar = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
             
     def forward(self, x):
         x = self.encoder(x)
@@ -56,9 +87,10 @@ class Encoder(nn.Module):
         return x_mu, x_logvar
 
 class Decoder(nn.Module):
-    def __init__(self, capacity, recon_loss="BCE", window_dim=64, hdim=None, stride=2, kernel_size=4, extra_layer=False, depth_input=False):
+    def __init__(self, capacity, recon_loss="BCE", window_dim=64, hdim=None, stride=2, kernel_size=4, extra_layer=False, depth_input=False, alt_model=False):
         super(Decoder, self).__init__()
 
+        self.alt_model = alt_model
         self.window_dim=window_dim
         self.hdim = hdim
         self.reverse_hdim = list(reversed(self.hdim))
@@ -96,6 +128,29 @@ class Decoder(nn.Module):
                 nn.Tanh()
             )
         self.decoder = nn.Sequential(*self.convolutions, self.final_layer)
+
+        if self.alt_model:
+            self.fc = nn.Sequential(
+                nn.Linear(out_features=256, in_features=self.capacity),
+                nn.ReLU(),
+                nn.Linear(out_features=self.window_dim * self.window_dim *60, in_features=256),
+                Reshape((60, self.window_dim, self.window_dim))
+            )
+            self.decoder = nn.Sequential(
+                nn.ReLU(),
+                #nn.ConvTranspose2d(out_channels=60, in_channels=60,kernel_size=3, stride=2, padding=1, output_padding=1),
+                #nn.ReLU(),
+                nn.ConvTranspose2d(out_channels=40, in_channels=60,kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                #nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=2, padding=1, output_padding=1),
+                #nn.ReLU(),
+                nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                #nn.ConvTranspose2d(out_channels=20, in_channels=20,kernel_size=3, stride=2, padding=1),
+                #nn.ReLU(),
+                nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=20,kernel_size=3, stride=1, padding=1),
+                nn.Sigmoid(),
+            )
         # self.conv4 = nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=4, stride=2, padding=1)
         # self.conv3 = nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=4, stride=2, padding=1)
         # self.conv2 = nn.ConvTranspose2d(in_channels=64, out_channels=32, kernel_size=4, stride=2, padding=1)
@@ -103,7 +158,7 @@ class Decoder(nn.Module):
             
     def forward(self, x):
         x = self.fc(x)
-        x = x.view(x.size(0), self.reverse_hdim[0], self.latent_window, self.latent_window) # unflatten batch of feature vectors to a batch of multi-channel feature maps
+
         
         x = self.decoder(x)
 
@@ -111,13 +166,16 @@ class Decoder(nn.Module):
         return x
     
 class VariationalAutoencoder(nn.Module):
-    def __init__(self, capacity = 2, recon_loss="BCE", window_dim=64, channels=4, stride=2, kernel_size=3, extra_layer = False, **kwargs):
+    def __init__(self, capacity = 2, recon_loss="BCE", window_dim=64, channels=4, stride=2, kernel_size=3, extra_layer = False, alt_model=True, **kwargs):
+
         super(VariationalAutoencoder, self).__init__()
+        print(f"altmodel {alt_model}")
         self.channels = channels
         self.capacity = capacity
         self.hdim = [self.channels, 32, 64, 128, 256, 512]
-        self.encoder = Encoder(capacity = capacity, window_dim=window_dim, hdim=self.hdim, stride=stride, kernel_size=kernel_size, extra_layer=extra_layer)
-        self.decoder = Decoder(capacity = capacity, recon_loss=recon_loss, window_dim=window_dim, hdim=self.hdim, stride=stride, kernel_size=kernel_size, extra_layer=extra_layer)
+        
+        self.encoder = Encoder(capacity = capacity, window_dim=window_dim, hdim=self.hdim, stride=stride, kernel_size=kernel_size, extra_layer=extra_layer, alt_model=alt_model)
+        self.decoder = Decoder(capacity = capacity, recon_loss=recon_loss, window_dim=window_dim, hdim=self.hdim, stride=stride, kernel_size=kernel_size, extra_layer=extra_layer, alt_model=alt_model)
     
     def forward(self, x):
         latent_mu, latent_logvar = self.encoder(x)
@@ -134,6 +192,9 @@ class VariationalAutoencoder(nn.Module):
             return eps.mul(std).add_(mu)
         else:
             return mu
+    
+    def __str__(self):
+        return f"VAE (cap= {self.capacity} )"
 
     def sample(self, num_samples: int, current_device: int):
         z = torch.randn(num_samples, self.capacity)
@@ -154,7 +215,7 @@ class VariationalAutoencoder(nn.Module):
         # Not averaging is the direct implementation of the negative log likelihood,
         # but averaging makes the weight of the other loss term independent of the image resolution.
         if recon_loss == "BCE":
-            recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2))
+            recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
         elif recon_loss == "MSE":
             recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2))
 

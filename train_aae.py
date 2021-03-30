@@ -33,7 +33,7 @@ parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first 
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
 parser.add_argument("--latent_dim", type=int, default=10, help="dimensionality of the latent code")
-parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
+parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=4, help="number of image channels")
 parser.add_argument("--sample_interval", type=int, default=300, help="interval between image sampling")
 parser.add_argument("--layer_size", type=int, default=2048, help="interval between image sampling")
@@ -70,24 +70,42 @@ def reparameterization(mu, logvar):
     return z
 
 
+    
+class Reshape(torch.nn.Module):
+    def __init__(self, outer_shape):
+        super(Reshape, self).__init__()
+        self.outer_shape = outer_shape
+    def forward(self, x):
+        return x.view(x.size(0), *self.outer_shape)
+
+
+
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(int(np.prod(img_shape)), opt.layer_size),
-            nn.Dropout(p=0.2),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(opt.layer_size, opt.layer_size),
-            nn.BatchNorm1d(opt.layer_size),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(in_channels=opt.channels, out_channels=20,kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            #nn.Conv2d(in_channels=20, out_channels=20,kernel_size=3, stride=2, padding=1),
+            #nn.ReLU(),
+            nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            #nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=2, padding=1),
+            #nn.ReLU(),
+            nn.Conv2d(in_channels=40, out_channels=60,kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            #nn.Conv2d(in_channels=60, out_channels=60,kernel_size=3, stride=2, padding=1),
+            #nn.ReLU(),
+            nn.Flatten()
         )
+        self.middle_layer = nn.Sequential(nn.Linear(in_features=opt.img_size*opt.img_size*60, out_features =256), nn.ReLU())
 
-        self.mu = nn.Linear(opt.layer_size, opt.latent_dim)
-        self.logvar = nn.Linear(opt.layer_size, opt.latent_dim)
+        self.mu = nn.Linear(in_features=256, out_features=opt.latent_dim)
+
 
     def forward(self, img):
-        img_flat = img.view(img.shape[0], -1)
+        #img_flat = img.view(img.shape[0], -1)
         x = self.model(img_flat)
         mu = self.mu(x)
         return mu
@@ -96,18 +114,31 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(out_features=256, in_features=opt.latent_dim),
+            nn.ReLU(),
+            nn.Linear(out_features=opt.img_size * opt.img_size *60, in_features=256),
+            Reshape((60, opt.img_size, opt.img_size))
+        )
 
-        self.model = nn.Sequential(
-            nn.Linear(opt.latent_dim, opt.layer_size),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(opt.layer_size, opt.layer_size),
-            nn.BatchNorm1d(opt.layer_size),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(opt.layer_size, int(np.prod(img_shape))),
-            nn.Tanh(),
+        self.decoder = nn.Sequential(
+            nn.ReLU(),
+            #nn.ConvTranspose2d(out_channels=60, in_channels=60,kernel_size=3, stride=2, padding=1, output_padding=1),
+            #nn.ReLU(),
+            nn.ConvTranspose2d(out_channels=40, in_channels=60,kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            #nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=2, padding=1, output_padding=1),
+            #nn.ReLU(),
+            nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            #nn.ConvTranspose2d(out_channels=20, in_channels=20,kernel_size=3, stride=2, padding=1),
+            #nn.ReLU(),
+            nn.ConvTranspose2d(out_channels=opt.channels, in_channels=20,kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
         )
 
     def forward(self, z):
+        z = self.fc(z)
         img_flat = self.model(z)
         img = img_flat.view(img_flat.shape[0], *img_shape)
         return img
@@ -153,6 +184,7 @@ echograms_train, echograms_test) = get_datasets(
     frequencies=[18, 38, 120, 200], 
     iterations=3000, 
     num_workers=0, 
+    window_dim=opt.img_size,
     include_depthmap=False)
 
 
@@ -174,10 +206,10 @@ def sample_image(n_row, batches_done):
     # Sample noise
     z = Variable(Tensor(np.random.normal(0, 1, (n_row ** 2, opt.latent_dim))))
     gen_imgs = decoder(z)
-    save_image(gen_imgs[:, 0].reshape(-1, 1, 64, 64).data, "output/aae/samples/%d.png" % batches_done, nrow=10, normalize=True)
+    save_image(gen_imgs[:, 0].reshape(-1, 1, 32, 32).data, "output/aae/samples/%d.png" % batches_done, nrow=10, normalize=True)
 
 def save_recon(original_image, reconstruction, batches_done, nrow):
-    save_image(reconstruction[:, 0].reshape(-1, 1, 64, 64).data, "output/aae/reconstruction/%d.png" % batches_done, nrow=10, normalize=True)
+    save_image(reconstruction[:, 0].reshape(-1, 1, 32, 32).data, "output/aae/reconstruction/%d.png" % batches_done, nrow=10, normalize=True)
 # ----------
 #  Training
 # ----------

@@ -35,9 +35,9 @@ def partition_data(echograms, partition='random', portion_train=0.85):
         # Partition by year of echogram
         train = list(filter(lambda x: any(
             [year in x.name for year in
-             ['D2011', 'D2012', 'D2013', 'D2014', 'D2015','D2016']]), echograms))
+             ['D2011', 'D2012', 'D2013', 'D2014', 'D2015']]), echograms))
         test = list(filter(lambda x: any([year in x.name for year in ['D2017']]), echograms))
-        val = []
+        val = list(filter(lambda x: any([year in x.name for year in ['D2016']]), echograms))
 
     else:
         print("Parameter 'partition' must equal 'random' or 'year'")
@@ -50,7 +50,7 @@ def partition_data(echograms, partition='random', portion_train=0.85):
 def get_validation_set_paths(validation_set):
     return [ech.name for ech in validation_set[1]]
 
-def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="random", batch_size=64, iterations=1000, num_workers=0, include_depthmap=True):
+def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="random", batch_size=64, iterations=1000, num_workers=0, include_depthmap=True, test_size=1000):
     # Load echograms and create partition for train/test/val
     window_size = [window_dim, window_dim]
     echograms = get_echograms(frequencies=frequencies, minimum_shape=window_dim)
@@ -69,6 +69,11 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="rando
     }
     sample_options_test = {
         "echograms": echograms_test,
+        **sample_options
+    }
+
+    sample_options_val = {
+        "echograms": echograms_val,
         **sample_options
     }
 
@@ -93,6 +98,15 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="rando
         ShoolSeabed(**sample_options_test, fish_type=1, sample_probs=sampler_probs[5])
     ]
 
+    samplers_val = [
+        Background(**sample_options_val, sample_probs=sampler_probs[0]),
+        Seabed(**sample_options_val, sample_probs=sampler_probs[1]),
+        Shool(**sample_options_val, fish_type=27, sample_probs=sampler_probs[2]),
+        Shool(**sample_options_val, fish_type=1, sample_probs=sampler_probs[3]),    
+        ShoolSeabed(**sample_options_val, fish_type=27, sample_probs=sampler_probs[4]),
+        ShoolSeabed(**sample_options_val, fish_type=1, sample_probs=sampler_probs[5])
+    ]
+
 
     augmentation = CombineFunctions([])
     label_transform = CombineFunctions([index_0_1_27, relabel_with_threshold_morph_close])
@@ -113,7 +127,7 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="rando
 
     dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)
     dataset_test = Dataset(samplers_test, *test_dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)
-
+    dataset_val = Dataset(samplers_val, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)
     dataloader_arguments = {
         "batch_size": batch_size, 
         "shuffle": False, 
@@ -123,11 +137,16 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="rando
 
     test_dataloader_arguments = {
         **dataloader_arguments,
-        "batch_size": 1000
+        "batch_size": test_size
+    }
+
+    val_dataloader_arguments = {
+        **dataloader_arguments
     }
 
     dataloader_train = DataLoader(dataset_train, **dataloader_arguments)
     dataloader_test = DataLoader(dataset_test, **test_dataloader_arguments)
+    dataloader_val = DataLoader(dataset_val, **dataloader_arguments)
 
-    return dataloader_train, dataloader_test, dataset_train, dataset_test, echograms_train, echograms_test
+    return dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val
 

@@ -1,18 +1,19 @@
-model_name: "InfoVAE"
+model_name: "vanilla_vae"
 model:
-  capacity: [2, 4] #, 32, 64, 128]
+  capacity: [10] #, 32, 64, 128]
   kernel_size: 4
   stride: 2
   channels: 5
   extra_layer: True
   depth_input: True
+  alt_model: True
 data_params:
   clustering_params:
     n_batches: 250
   frequencies: [18, 38, 120, 200]
   variational_beta: [0.1] #, 0.5, 1.0, 2.0]
-  dev: 0 # Set Cuda device number here, e.g. "dev=2".
-  window_dim: 64
+  dev: 1 # Set Cuda device number here, e.g. "dev=2".
+  window_dim: 32
   batch_size: 81
   lr: 0.0001
   log_step: 2
@@ -24,5 +25,5 @@ data_params:
   save_model_params: True
   verbose: True
   num_workers: 0
-  recon_criterion: "MSE"
+  recon_criterion: "BCE"
   base_figure_dir: "output/vae_test_figures"

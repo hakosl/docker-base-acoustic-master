@@ -82,8 +82,8 @@ class Shool(Sampler):
             
             #if xmax == xmin or ymax == ymin:
             #    return self.get_sample()
-            xmid = np.random.randint(xmin - 10, xmax + 10)
-            ymid = np.random.randint(ymin - 10, ymax + 10)
+            xmid = np.random.randint(xmin - 20, xmax + 20)
+            ymid = np.random.randint(ymin - 20, ymax + 20)
             #xmid, ymid = (xmax + xmin) / 2, (ymax + ymin) / 2
 
 
@@ -95,7 +95,7 @@ class Shool(Sampler):
                 xmax = xmid + (ydim/2)
                 xmin = xmid - (ydim/2)
         
-            offset = 20
+            offset = 32
             ymax, xmax = ymax + offset, xmax + offset
             ymin, xmin = ymin - offset, xmin - offset
             

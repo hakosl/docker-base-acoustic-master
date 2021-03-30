@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  acousticproject:
+    image: acousticproject
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-pytorch
