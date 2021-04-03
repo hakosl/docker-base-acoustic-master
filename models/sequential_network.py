@@ -23,10 +23,17 @@ class SequentialNetwork(nn.Module):
             nn.Linear(10, int(out_dim)),
             nn.Softmax(dim=1)
             )
+        print(self.network)
         self.network.to(device)
+
+        self._estimator_type = "classifier"
 
 
         self.optimizer = optim.Adam(self.network.parameters())
+
+
+    def __str__(self):
+        return f"Sequential ( in = {self.in_dim} out = {self.out_dim} )"
     def forward(self, X):
         #_, X, _ = self.vae(X)
         return self.network(X)

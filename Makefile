@@ -51,6 +51,8 @@ ivae:
 aae:
 	$(RUNCMD) python3 train_aae.py $(d) 
 
+cs:
+	$(RUNCMD) python3 compute_stats.py
 
 aaess:
 	CUDA_VISIBLE_DEVICES=1 $(RUNCMD) python3 unsupervised_aae.py $(d) 

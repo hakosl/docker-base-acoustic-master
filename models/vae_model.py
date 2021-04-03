@@ -60,22 +60,26 @@ class Encoder(nn.Module):
         if self.alt_model:
             self.encoder = nn.Sequential(
                 nn.Conv2d(in_channels=self.hdim[0], out_channels=20,kernel_size=3, stride=1, padding=1),
+                nn.Dropout(p=0.2),
+                nn.BatchNorm2d(20),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=20, out_channels=20,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
                 nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(40),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
                 nn.Conv2d(in_channels=40, out_channels=60,kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(60),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=60, out_channels=60,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
             )
-            self.middle_layer = nn.Sequential(nn.Linear(in_features=self.window_dim*self.window_dim*60, out_features = self.latent_in_dim), nn.ReLU())
+            self.middle_layer = nn.Sequential(nn.Linear(in_features=self.window_dim*self.window_dim*60, out_features = self.latent_in_dim), nn.BatchNorm1d(self.latent_in_dim), nn.ReLU())
 
-            self.fc_mu = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
-            self.fc_logvar = nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity)
+            self.fc_mu = nn.Sequential(nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity), nn.BatchNorm1d(self.capacity))
+            self.fc_logvar = nn.Sequential(nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity), nn.BatchNorm1d(self.capacity))
             
     def forward(self, x):
         x = self.encoder(x)
@@ -169,7 +173,6 @@ class VariationalAutoencoder(nn.Module):
     def __init__(self, capacity = 2, recon_loss="BCE", window_dim=64, channels=4, stride=2, kernel_size=3, extra_layer = False, alt_model=True, **kwargs):
 
         super(VariationalAutoencoder, self).__init__()
-        print(f"altmodel {alt_model}")
         self.channels = channels
         self.capacity = capacity
         self.hdim = [self.channels, 32, 64, 128, 256, 512]

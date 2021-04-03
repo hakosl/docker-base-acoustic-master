@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils, datasets
 
@@ -232,8 +233,13 @@ class InfoVAE(nn.Module):
             recon_loss = F.binary_cross_entropy(recon_x.view(n_imgs, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="mean")
         elif recon_loss == "MSE":
             recon_loss = F.mse_loss(recon_x.view(n_imgs, channels * window_dim **2), x.view(-1, channels * window_dim ** 2), reduction="mean")
+
         
-        mmd = self.compute_mmd(x.reshape(-1, window_dim * channels *  window_dim), z)
+        true_samples = Variable(
+            torch.randn(n_imgs, self.capacity),
+            requires_grad=False
+        ).cuda()
+        mmd = self.compute_mmd(true_samples, z)
         nll = recon_loss
         loss = nll + mmd
         return loss, nll, mmd

@@ -1,6 +1,6 @@
 model_name: "InfoVAE" # "InfoVAE" or "vanilla_vae"
 model:
-  capacity: [2, 5, 10, 20, 40, 80] # [32, 64, 128, 256, 512]
+  capacity: [80] # [32, 64, 128, 256, 512]
   kernel_size: 4
   channels: 5
   extra_layer: True

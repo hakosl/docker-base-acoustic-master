@@ -13,7 +13,8 @@ class Dataset():
                  include_depthmap = False,
                  si=False,
                  loss="BCE",
-                 full_labels=False):
+                 full_labels=False,
+                 stratified_dataloader=False):
         """
         A dataset is used to draw random samples
         :param samplers: The samplers used to draw samples
@@ -40,15 +41,21 @@ class Dataset():
             self.sampler_probs = np.ones(len(samplers))
         self.sampler_probs = np.array(self.sampler_probs)
         self.sampler_probs = np.cumsum(self.sampler_probs).astype(float)
-        self.sampler_probs /= np.max(self.sampler_probs)
+        if not stratified_dataloader:
+            self.sampler_probs /= np.max(self.sampler_probs)
         self.loss = loss
         self.full_labels = full_labels
+        self.stratified_dataloader = stratified_dataloader
 
     def __getitem__(self, index):
         #Select which sampler to use
-        i = np.random.rand()
-        sample_index = np.where(i < self.sampler_probs)[0][0]
-        sampler = self.samplers[np.where(i < self.sampler_probs)[0][0]]
+        if self.stratified_dataloader:
+            sampler_index = np.where((index % self.sampler_probs[-1]) < self.sampler_probs)[0][0]
+            sampler = self.samplers[sampler_index]
+        else:
+            i = np.random.rand()
+            sample_index = np.where(i < self.sampler_probs)[0][0]
+            sampler = self.samplers[np.where(i < self.sampler_probs)[0][0]]
 
         #Draw coordinate and echogram with sampler
 

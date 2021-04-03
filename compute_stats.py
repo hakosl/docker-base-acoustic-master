@@ -1,17 +1,22 @@
 import torch
 from utils.data_utils import get_datasets
+from data.echogram import get_echograms
 print("this is before loading data")
-dataloader_train, dataloader_test, dataset_train, dataset_test, echograms_train, echograms_test = get_datasets(include_depthmap=False)
 
-sums = torch.Tensor(4)
-sumsq = torch.Tensor(4)
-print("reached for loop")
-for (x, _, _) in dataloader_train:
-    x = x.float()
-    sums += torch.sum(x.transpose(0, 1).reshape(4, -1), axis=1)
-    sumsq += torch.sum(x.transpose(0, 1).reshape(4, -1).pow(2), axis=1)
+dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val = get_datasets(include_depthmap=False)
 
-dlen = len(dataloader_train) * 64 * 64
-mean = sums / dlen
-std = torch.sqrt(sumsq - torch.div(sums * sums, dlen))/(dlen - 1)
-print(mean.item(), std.item())
+cnt = 0
+fst_moment = torch.empty(5)
+snd_moment = torch.empty(5)
+print("computing_mean")
+for (data, labels, si) in dataloader_train:
+    b, c, h, w = data.shape
+    nb_pixels = b * h * w
+    sum_ = torch.sum(data, dim=[0, 2, 3])
+    sum_of_square = torch.sum(data ** 2, dim=[0, 2, 3])
+    fst_moment = (cnt * fst_moment + sum_) / (cnt + nb_pixels)
+    snd_moment = (cnt * snd_moment + sum_of_square) / (cnt + nb_pixels)
+
+    cnt += nb_pixels
+
+print(fst_moment, torch.sqrt(snd_moment - fst_moment ** 2))

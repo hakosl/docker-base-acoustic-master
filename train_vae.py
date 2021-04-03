@@ -304,10 +304,10 @@ def train_model(
         # Log loss and accuracy
         if (i) % (log_step*10) == 0:
             save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
-            best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=None, i=i, save_plot=False, writer=writer)
+            #best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=None, i=i, save_plot=False, writer=writer)
 
-            writer.add_scalar("Accuracy/svm", clf_acc, i)
-            writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
+            #writer.add_scalar("Accuracy/svm", clf_acc, i)
+            #writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
         if (i + 1) % log_step == 0:
             delta = print_loss_save_latent(model, inputs_test, start_time, i, iterations, base_figure_dir, recon_criterion, variational_beta, running_loss_train, running_recon_loss, running_kl_loss, log_step, losses, recon_losses, kl_losses, iteration, device, si_test, latent_image_fns, verbose)
             if best_val_loss > running_loss_train:
@@ -348,7 +348,7 @@ def train_model(
 
 
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
-    best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path, i=i, writer=writer)
+    best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), dataloader_val, dataloader_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path, i=i, writer=writer)
 
     grid_fig_path = f"{base_figure_dir}/grid_r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
     make_grid(echograms_test[5], model, cm, clf, device, data_transform, window_dim, path=grid_fig_path)
@@ -356,7 +356,7 @@ def train_model(
     print(f"clustering figure saved to: {fig_path}")
     print(f"r_score: {best_r_score}")
 
-    writer.add_hparams({"model_name": model.__class__.__name__, "capacity": model.capacity, "variational_beta": variational_beta}, {"svm_accuracy": clf_acc, "adjusted_rand_score": best_r_score, "loss_train": loss_train.item()})
+    writer.add_hparams({"model_name": model.__class__.__name__, "capacity": model.capacity, "variational_beta": variational_beta, "classifier": str(clf)}, {"svm_accuracy": clf_acc, "adjusted_rand_score": best_r_score, "loss_train": loss_train.item()})
     writer.add_graph(model, inputs_test[:10])
     writer.add_embedding(model.encoder(inputs_test)[0], metadata=label_nr_to_string(si_test), label_img=inputs_test[:, 0:1])
 
