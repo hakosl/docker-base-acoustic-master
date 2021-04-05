@@ -48,7 +48,7 @@ from models.vae_models import vae_models
 from visualization.vae_loss_vis import vae_loss_visualization
 import models.unet_bn_sequential_db as models
 from visualization.plot_latent_space import plot_latent_space, plot_latent_space_gif
-from visualization.validate_clustering import validate_clustering
+from visualization.validate_clustering import validate_clustering, compute_DCI, compute_mean_auc, label_efficiency
 from sklearn.cluster import KMeans
 from torch.utils.tensorboard import SummaryWriter
 
@@ -264,76 +264,108 @@ def train_model(
     iteration = []
     latent_image_fns = []
 
-    best_val_loss = float("inf")
+    best_val_loss = -1
     best_val_iteration = 0
-    for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
-        # Load train data and transfer from numpy to pytorch
-        #print(inputs_train)
 
-        inputs_train = inputs_train.float().to(device)
-        labels_train = labels_train.long().to(device)
+    with torch.profiler.profile(
+        schedule=torch.profiler.schedule(
+            wait=2,
+            warmup=2,
+            active=6,
+            repeat=1),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler("./logs"),
+        with_stack=True
+        ) as profiler:
+        for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
+            # Load train data and transfer from numpy to pytorch
+            #print(inputs_train)
 
-        # Forward + backward + optimize
-        model.train()
-        optimizer.zero_grad()
-        x_recon, mu, logvar = model(inputs_train)
+            inputs_train = inputs_train.float().to(device)
+            labels_train = labels_train.long().to(device)
 
-        loss_train, recon_loss, kl_loss = criterion(
-            x_recon, 
-            inputs_train, 
-            mu, 
-            logvar,
-            variational_beta, 
-            recon_loss=recon_criterion, 
-            window_dim=window_dim,
-            channels=model.channels)
-        loss_train.backward()
+            # Forward + backward + optimize
+            model.train()
+            optimizer.zero_grad()
+            x_recon, mu, logvar = model(inputs_train)
 
-
-        optimizer.step()
-        # Update loss count for train set
-        writer.add_scalar("Loss/train", loss_train.item(), i)
-        writer.add_scalar("Loss/train_kl", kl_loss.item(), i)
-        writer.add_scalar("Loss/train_recon", recon_loss.item(), i)
+            loss_train, recon_loss, kl_loss = criterion(
+                x_recon, 
+                inputs_train, 
+                mu, 
+                logvar,
+                variational_beta, 
+                recon_loss=recon_criterion, 
+                window_dim=window_dim,
+                channels=model.channels)
+            loss_train.backward()
 
 
-        running_loss_train += loss_train.item()
-        running_recon_loss += recon_loss.item()
-        running_kl_loss += kl_loss.item()
-        model.zero_grad()
-        # Log loss and accuracy
-        if (i) % (log_step*10) == 0:
-            save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
-            #best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=None, i=i, save_plot=False, writer=writer)
+            optimizer.step()
+            # Update loss count for train set
+            writer.add_scalar("Loss/train", loss_train.item(), i)
+            writer.add_scalar("Loss/train_kl", kl_loss.item(), i)
+            writer.add_scalar("Loss/train_recon", recon_loss.item(), i)
 
-            #writer.add_scalar("Accuracy/svm", clf_acc, i)
-            #writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
-        if (i + 1) % log_step == 0:
-            delta = print_loss_save_latent(model, inputs_test, start_time, i, iterations, base_figure_dir, recon_criterion, variational_beta, running_loss_train, running_recon_loss, running_kl_loss, log_step, losses, recon_losses, kl_losses, iteration, device, si_test, latent_image_fns, verbose)
-            if best_val_loss > running_loss_train:
-                best_val_loss = running_loss_train
+
+            running_loss_train += loss_train.item()
+            running_recon_loss += recon_loss.item()
+            running_kl_loss += kl_loss.item()
+            model.zero_grad()
+            # Log loss and accuracy
+            if (i) % (log_step*10) == 0:
+                save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
+                #best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), inputs_test, si_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=None, i=i, save_plot=False, writer=writer)
+
+                #writer.add_scalar("Accuracy/svm", clf_acc, i)
+                #writer.add_scalar("R_score/HDBSCAN", best_r_score, i)
+                explicitness = compute_mean_auc(model, dataloader_val)
                 
-                best_val_iteration = i
+                print(f"explicitness: {explicitness}")
+                writer.add_scalar("f-stat/explicitness", explicitness, i)
 
-                # Save model parameters to file after training
-                if save_model_params:
-                    if path_model_params_save == None:
-                        path_model_params_save = path_model_params_load
-                    #torch.cuda.empty_cache()
-                    #torch.save(model.to('cpu').state_dict(), path_model_params)
-                    torch.save(model.state_dict(), path_model_params_save)
-                    print('Trained model parameters saved to file: ' + path_model_params_save)
+                if best_val_loss < explicitness:
+                    best_val_loss = explicitness
+                    
+                    best_val_iteration = i
+                    # Save model parameters to file after training
+                    if save_model_params:
+                        if path_model_params_save == None:
+                            path_model_params_save = path_model_params_load
+                        #torch.cuda.empty_cache()
+                        #torch.save(model.to('cpu').state_dict(), path_model_params)
+                        torch.save(model.state_dict(), path_model_params_save)
+                        print('Trained model parameters saved to file: ' + path_model_params_save)
 
-            else:
-                if i > best_val_iteration + patience:
+                else:
                     save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
                     break
 
+            if (i + 1) % log_step == 0:
+                delta = print_loss_save_latent(model, inputs_test, start_time, i, iterations, base_figure_dir, recon_criterion, variational_beta, running_loss_train, running_recon_loss, running_kl_loss, log_step, losses, recon_losses, kl_losses, iteration, device, si_test, latent_image_fns, verbose)
+                if best_val_loss > running_loss_train:
+                    best_val_loss = running_loss_train
+                    
+                    best_val_iteration = i
 
-            running_loss_train = 0.0       
-            running_recon_loss = 0.0
-            running_kl_loss = 0.0
-            
+                    # Save model parameters to file after training
+                    if save_model_params:
+                        if path_model_params_save == None:
+                            path_model_params_save = path_model_params_load
+                        #torch.cuda.empty_cache()
+                        #torch.save(model.to('cpu').state_dict(), path_model_params)
+                        torch.save(model.state_dict(), path_model_params_save)
+                        print('Trained model parameters saved to file: ' + path_model_params_save)
+
+                else:
+                    if i > best_val_iteration + patience:
+                        save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
+                        break
+
+
+                running_loss_train = 0.0       
+                running_recon_loss = 0.0
+                running_kl_loss = 0.0
+                #profiler.step()
     if verbose:
         print()
         print('Training complete')
@@ -346,6 +378,9 @@ def train_model(
     plot_latent_space_gif(latent_image_fns, f"{base_figure_dir}/latent/c{model.capacity}b:{variational_beta}.gif")
     print(f"loss graph saved to {loss_fig_path}", )
 
+    modularity, explicitness, information, ind_modu, compactness = compute_DCI(model, dataloader_train, dataloader_val, dataloader_test, writer)
+    n, accs = label_efficiency(model, dataloader_train, dataloader_val, dataloader_test)
+    print(n, accs)
 
     fig_path = f"{base_figure_dir}/clustering/r{recon_criterion}c:{model.capacity}:b:{variational_beta}.png"
     best_r_score, cm, clf, clf_acc = validate_clustering(model, HDBSCAN(prediction_data=True), dataloader_val, dataloader_test, dataset_test.samplers, device, model.capacity, variational_beta, fig_path=fig_path, i=i, writer=writer)
@@ -356,7 +391,7 @@ def train_model(
     print(f"clustering figure saved to: {fig_path}")
     print(f"r_score: {best_r_score}")
 
-    writer.add_hparams({"model_name": model.__class__.__name__, "capacity": model.capacity, "variational_beta": variational_beta, "classifier": str(clf)}, {"svm_accuracy": clf_acc, "adjusted_rand_score": best_r_score, "loss_train": loss_train.item()})
+    writer.add_hparams({"model_name": model.__class__.__name__, "capacity": model.capacity, "variational_beta": variational_beta, "classifier": str(clf)}, {"svm_accuracy": clf_acc, "adjusted_rand_score": best_r_score, "loss_train": loss_train.item(), "explicitness": explicitness, "modularity": modularity, "information": information})
     writer.add_graph(model, inputs_test[:10])
     writer.add_embedding(model.encoder(inputs_test)[0], metadata=label_nr_to_string(si_test), label_img=inputs_test[:, 0:1])
 

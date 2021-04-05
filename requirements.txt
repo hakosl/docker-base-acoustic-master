@@ -13,7 +13,7 @@ kiwisolver==1.1.0
 Markdown==3.1.1
 matplotlib==3.0.3
 numpy==1.16.4
-pandas==0.24.2
+pandas
 Pillow==6.1.0
 #protobuf==3.9.1
 pyparsing==2.4.2
@@ -33,7 +33,7 @@ pyyaml
 python-dev
 #hdbscan
 numba
-torch_tb_profiler
+torch_tb_profiler==0.1.0
 #umap-learn
 
 

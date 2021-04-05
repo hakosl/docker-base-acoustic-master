@@ -7,14 +7,55 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.cluster import DBSCAN
+from sklearn.ensemble import RandomForestClassifier
 
-from sklearn.model_selection import ParameterGrid
+from sklearn.model_selection import ParameterGrid, GridSearchCV
 from sklearn.metrics import adjusted_rand_score
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from sklearn.metrics import plot_confusion_matrix
-
+from sklearn.metrics import plot_confusion_matrix, mean_squared_error, plot_precision_recall_curve, plot_roc_curve
+from visualization.hinton import hinton
 from models.sequential_network import SequentialNetwork
+from utils.calculate_explicitness import calculate_explicitness
+from utils.modularity import compute_deviations, compute_mutual_infos
+
+class NTrainIter():
+    def __init__(self, x, y, n, n_folds):
+        self.xs = x.shape
+        self.ys = y.shape
+        self.n = n
+        self.n_folds = n_folds
+        self.i = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if i == n_folds:
+            raise StopIteration
+        else:
+            tr_idx = arrange(i * n, (i + 1) * n)
+            test_idx = arrange(0, i * n) + arrange((i + 1) * n, self.xs[0])
+            if (i + 1) * n > x.shape[0]:
+                raise StopIteration
+            i += 1
+            return tr_idx, test_idx
+
+
+def label_efficiency(model, dataloader_train, dataloader_val, dataloader_test, n = [10, 50]):
+    device = next(model.parameters()).device
+    latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader_train, device)
+    latent_mus_v, latent_logvars_v, labels_v, sample_indexes_v = get_representation(model, dataloader_val, device)
+    latent_mus_t, latent_logvars_t, labels_t, sample_indexes_t = get_representation(model, dataloader_test, device)
+    accs = []
+    for i in n:
+        clf = GridSearchCV(RandomForestClassifier(n_estimators = 100, random_state=0), {"max_depth": [3, 5, 10, 15, 20]}, "accuracy")
+
+        clf.fit(latent_mus[:i * 10], sample_indexes[:i * 10])
+        acc = clf.score(latent_mus_t, sample_indexes_t)
+        accs.append(acc)
+    
+    return n, accs
 
 
 
@@ -42,9 +83,106 @@ def get_representation(model, dataloader, device):
     si = si.reshape(-1)
 
     return mus, logvars, labels, si
+
+def compute_explicitness(accuracy, n_cat):
+    return 1.0 - n_cat * accuracy
     
+def compute_compactness(r):
+    p = r / np.sum(r, axis=1)[:, np.newaxis]
+    c = 1 + np.sum(p * (np.log(p) / np.log(p.shape[1])), axis=1)
 
     
+
+    return c
+
+def compute_modularity(r):
+    p = r / np.sum(r, axis=0)[np.newaxis, :]
+    d = 1 + np.sum(p * (np.log(p) / np.log(p.shape[0])), axis=0)
+
+    pm = np.sum(r, axis=0) / np.sum(r)
+    modularity = np.dot(d, pm)
+
+    return modularity, d
+
+def one_hot(a):
+    b = np.zeros((a.size, a.max() + 1))
+    b[np.arange(a.size), a] = 1
+
+    return b
+def compute_mean_auc(model, dataloader):
+    device = next(model.parameters()).device
+    latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader, device)
+    mean_auc, all_aucs, all_aucs_factors, all_aucs_factor_vals = calculate_explicitness(latent_mus, one_hot(sample_indexes))
+    
+    return np.mean(mean_auc)
+
+
+def compute_DCI(model, dataloader_train, dataloader_val, dataloader_test, writer, save_hinton=True):
+    device = next(model.parameters()).device
+    label_names = ["background", "bottom", "other", "sandeel"]
+    
+    latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader_train, device)
+    latent_mus_v, latent_logvars_v, labels_v, sample_indexes_v = get_representation(model, dataloader_val, device)
+    latent_mus_t, latent_logvars_t, labels_t, sample_indexes_t = get_representation(model, dataloader_test, device)
+
+    mean_auc, all_aucs, all_aucs_factors, all_aucs_factor_vals = calculate_explicitness(latent_mus_v, one_hot(sample_indexes_v))
+    
+    mi = compute_mutual_infos(latent_mus_v, one_hot(sample_indexes_v))
+    dev, thet = compute_deviations(mi, label_names)
+
+    
+    n_classes = sample_indexes.max() + 1
+    predictions = []
+    feature_importance = []
+    mses = []
+    mses_t = []
+
+    
+
+    fig, axs = plt.subplots(1, n_classes, figsize=(12, 4))
+    for i in range(n_classes):
+        trees_clf = RandomForestClassifier(n_estimators = 250, max_depth=10, random_state=0)
+        trees_clf.fit(latent_mus, one_hot(sample_indexes)[:, i])
+        
+        pred = trees_clf.predict_proba(latent_mus)
+        pred_v = trees_clf.predict_proba(latent_mus_v)
+        pred_t = trees_clf.predict_proba(latent_mus_t)
+        
+        mse_v = mean_squared_error(one_hot(sample_indexes_v)[:, i], pred_v[:, 1])
+        mses.append(mse_v)
+
+        mse_t = mean_squared_error(one_hot(sample_indexes_t)[:, i], pred_t[:, 1])
+        mses_t.append(mse_t)
+
+        feature_importance.append(np.abs(trees_clf.feature_importances_))
+
+        plot_roc_curve(trees_clf, latent_mus_v, one_hot(sample_indexes_v)[:, i], name=label_names[i], ax=axs[i])
+
+    
+    writer.add_figure("DCI/ROC", fig)
+
+
+
+    feature_importance = np.vstack(feature_importance)
+    mse = np.mean(mses)
+    mse_t = np.mean(mses_t)
+
+    explicitness = compute_explicitness(mse, n_classes)
+    modularity, individual_modularity = compute_modularity(feature_importance)
+    compactness = compute_compactness(feature_importance)
+    if save_hinton:
+        fig, ax = plt.subplots(1, 1, figsize=(8, 4))
+        hinton(feature_importance.T, ", ".join(label_names), "$\mathbf{z}$", ax=ax, fontsize=18)
+        writer.add_figure("DCI/Hinton", fig)
+    
+    writer.add_scalar("DCI/modularity", modularity)
+    writer.add_scalar("DCI/explicitness", explicitness)
+    writer.add_scalar("DCI/information", mse)
+
+    return modularity, explicitness, mse, individual_modularity, compactness
+
+
+
 
 def validate_clustering(model, clusterer, dataloader_train, dataloader_test, samplers_test, device, capacity, vb, fig_path="output/clustering.png", i=0, n_visualize=250, save_plot=True, writer=None, dataloader=None):
     enc = model.encoder

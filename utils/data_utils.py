@@ -11,6 +11,8 @@ from batch.data_transform_functions.remove_nan_inf import remove_nan_inf
 #from batch.data_transform_functions.db_with_limits import db_with_limits
 from batch.data_transform_functions.db_ import db
 from batch.data_transform_functions.db_with_limits_norm import db_with_limits_norm, db_with_limits_norm_MSE
+from batch.data_transform_functions.normalize import normalize
+from batch.data_transform_functions.db_with_limits import db_with_limits 
 from batch.label_transform_functions.index_0_1_27 import index_0_1_27
 from batch.label_transform_functions.relabel_with_threshold_morph_close import relabel_with_threshold_morph_close
 from batch.combine_functions import CombineFunctions
@@ -50,7 +52,7 @@ def partition_data(echograms, partition='random', portion_train=0.85):
 def get_validation_set_paths(validation_set):
     return [ech.name for ech in validation_set[1]]
 
-def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="year", batch_size=64, iterations=1000, num_workers=0, include_depthmap=True, test_size=1000):
+def get_datasets(frequencies=[18, 38, 120, 200], window_dim=32, partition="year", batch_size=64, iterations=1000, num_workers=0, include_depthmap=True, test_size=1000, normalize_data=True, depthmap_transform=False):
     # Load echograms and create partition for train/test/val
     window_size = [window_dim, window_dim]
     echograms = get_echograms(frequencies=frequencies, minimum_shape=window_dim)
@@ -106,7 +108,10 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="year"
     #    # if recon criterion is mse we want the domain to be -1 - 1
     #    data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm_MSE])
     #else:
-    data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm])
+    if normalize_data:
+        data_transform = CombineFunctions([remove_nan_inf, db_with_limits, normalize])
+    else:
+        data_transform = CombineFunctions([remove_nan_inf, db_with_limits])
 
     transform_functions = {
         "augmentation_function": augmentation,
@@ -118,7 +123,7 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=64, partition="year"
     test_dataset_arguments = [window_size, frequencies, 10000]
     test_dataset_arguments = [window_size, frequencies, 1000]
 
-    dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)
+    dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap, depthmap_transform=depthmap_transform)
     dataset_test = Dataset(samplers_test, *test_dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)
     dataset_val = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap, stratified_dataloader=True)
     dataloader_arguments = {

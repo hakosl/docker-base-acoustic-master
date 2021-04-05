@@ -54,6 +54,9 @@ aae:
 cs:
 	$(RUNCMD) python3 compute_stats.py
 
+gns:
+	$(RUNCMD) python3 getnumbershools.py
+
 aaess:
 	CUDA_VISIBLE_DEVICES=1 $(RUNCMD) python3 unsupervised_aae.py $(d) 
 
@@ -68,4 +71,4 @@ profile:
 	$(RUNCMD) python3 -m cProfile -s time train_vae.py -c=config/vae_test_config.yaml
 
 tb:
-	$(RUNCMD) tensorboard --logdir=runs
+	$(RUNCMD) tensorboard --logdir=$(L)

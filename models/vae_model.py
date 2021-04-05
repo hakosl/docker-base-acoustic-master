@@ -220,7 +220,7 @@ class VariationalAutoencoder(nn.Module):
         if recon_loss == "BCE":
             recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
         elif recon_loss == "MSE":
-            recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2))
+            recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
 
         
         # KL-divergence between the prior distribution over latent vectors

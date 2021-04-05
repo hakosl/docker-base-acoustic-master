@@ -11,6 +11,7 @@ class Dataset():
                  label_transform_function=None,
                  data_transform_function=None,
                  include_depthmap = False,
+                 depthmap_transform=True,
                  si=False,
                  loss="BCE",
                  full_labels=False,
@@ -36,6 +37,7 @@ class Dataset():
         self.label_transform_function = label_transform_function
         self.data_transform_function = data_transform_function
         self.si = si
+        self.depthmap_transform = depthmap_transform
         # Normalize sampling probabillities
         if self.sampler_probs is None:
             self.sampler_probs = np.ones(len(samplers))
@@ -75,17 +77,7 @@ class Dataset():
         else:
             data, labels = get_crop(echogram, center_location, self.window_size, self.frequencies, sampler.random_sample)
         
-        # Apply augmentation
-        if self.augmentation_function is not None:
-            data, labels, echogram = self.augmentation_function(data, labels, echogram)
 
-        # Apply label-transform-function
-        if self.label_transform_function is not None:
-            data, labels, echogram = self.label_transform_function(data, labels, echogram)
-
-        # Apply data-transform-function
-        if self.data_transform_function is not None:
-            data, labels, echogram, frequencies = self.data_transform_function(data, labels, echogram, self.frequencies)
         
         if self.include_depthmap:
             min_depth, max_depth = echogram.range_vector[0], echogram.range_vector[-1]
@@ -100,8 +92,22 @@ class Dataset():
             eg_min_depth, eg_max_depth = (ymin / y_len) * max_depth + min_depth, (ymax / y_len) * max_depth + min_depth 
 
             depthmap = np.repeat(np.linspace(eg_min_depth, eg_max_depth, data.shape[1])[np.newaxis], data.shape[2], axis=0)[np.newaxis].transpose((0, 2, 1))
-            depthmap = np.tanh(depthmap/100)
+            if self.depthmap_transform:
+                depthmap = np.tanh(depthmap/100)
             data = np.vstack((data, depthmap))
+    
+        # Apply augmentation
+        if self.augmentation_function is not None:
+            data, labels, echogram = self.augmentation_function(data, labels, echogram)
+
+        # Apply label-transform-function
+        if self.label_transform_function is not None:
+            data, labels, echogram = self.label_transform_function(data, labels, echogram)
+
+        # Apply data-transform-function
+        if self.data_transform_function is not None:
+            data, labels, echogram, frequencies = self.data_transform_function(data, labels, echogram, self.frequencies)
+        
         
 
         labels = labels.astype('int16')

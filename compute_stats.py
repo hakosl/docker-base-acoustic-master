@@ -3,7 +3,7 @@ from utils.data_utils import get_datasets
 from data.echogram import get_echograms
 print("this is before loading data")
 
-dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val = get_datasets(include_depthmap=False)
+dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val = get_datasets(batch_size = 100, iterations=100, normalize=False, depthmap_transform=False)
 
 cnt = 0
 fst_moment = torch.empty(5)
@@ -18,5 +18,6 @@ for (data, labels, si) in dataloader_train:
     snd_moment = (cnt * snd_moment + sum_of_square) / (cnt + nb_pixels)
 
     cnt += nb_pixels
+    
 
 print(fst_moment, torch.sqrt(snd_moment - fst_moment ** 2))
