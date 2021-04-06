@@ -16,7 +16,7 @@ data_params:
   batch_size: 64
   lr: 0.001
   log_step: 30
-  iterations: 10000
+  iterations: 3000
   path_model_params_load: "" # Set path to load pre-trained model params (only required if load_pre_trained==True).
   path_model_params_save: "/acoustic/vae_trained.pt" # Insert path, e.g. "/nr/project/bild/Cogmar/usr/obr/model/paper_v2_heave_2.pt",
   partition: "year"

@@ -72,3 +72,7 @@ profile:
 
 tb:
 	$(RUNCMD) tensorboard --logdir=$(L)
+
+
+sd:
+	$(RUNCMD) python3 save_dataset.py
