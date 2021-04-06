@@ -42,7 +42,7 @@ class NTrainIter():
             return tr_idx, test_idx
 
 
-def label_efficiency(model, dataloader_train, dataloader_val, dataloader_test, n = [10, 50]):
+def label_efficiency(model, dataloader_train, dataloader_val, dataloader_test, n = [60, 240]):
     device = next(model.parameters()).device
     latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader_train, device)
     latent_mus_v, latent_logvars_v, labels_v, sample_indexes_v = get_representation(model, dataloader_val, device)

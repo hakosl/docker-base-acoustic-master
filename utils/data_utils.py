@@ -38,7 +38,7 @@ def partition_data(echograms, partition='random', portion_train=0.85):
         train = list(filter(lambda x: any(
             [year in x.name for year in
              ['D2011', 'D2012', 'D2013', 'D2014', 'D2015', 'D2016']]), echograms))
-        test = list(filter(lambda x: any([year in x.name for year in ['D2017']]), echograms))
+        test = list(filter(lambda x: any([year in x.name for year in ['D2017', "D2018", "D2007", "D2008", "D2009", "D2010"]]), echograms))
         val = list()
 
     else:

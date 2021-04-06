@@ -9,12 +9,13 @@ dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, 
 imgs = np.array((1000* 100, 5, 32, 32))
 labels = np.array((1000 * 100, 1, 32, 32))
 si = np.array((1000 * 100,))
-
-for i, (data, l, s) in enumerate(dataloader_train):
+i = 0
+for data, l, s in dataloader_train:
     b, c, h, w = data.shape
     imgs[100 * i: 100* (i + 1)] = data
     labels[100 * i: 100*(i + 1)] = l
     si[100 * i: 100*(i + 1)] = s
+    i += 1
 
 print(imgs.shape)
 
@@ -27,11 +28,13 @@ imgs = np.array((1000* 100, 5, 32, 32))
 labels = np.array((1000 * 100, 1, 32, 32))
 si = np.array((1000 * 100,))
 
-for i, (data, l, s) in enumerate(dataloader_test):
+i = 0
+for data, l, s in dataloader_test:
     b, c, h, w = data.shape
     imgs[100 * i: 100* (i + 1)] = data
     labels[100 * i: 100*(i + 1)] = l
     si[100 * i: 100*(i + 1)] = s
+    i += 1
 
 with open("./data/test.npy", "wb") as f:
     np.save(f, imgs)

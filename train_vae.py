@@ -266,9 +266,9 @@ def train_model(
 
     best_val_loss = -1
     best_val_iteration = 0
-
+    i = 0
     
-    for i, (inputs_train, labels_train, si) in enumerate(dataloader_train):
+    for (inputs_train, labels_train, si) in dataloader_train:
         # Load train data and transfer from numpy to pytorch
         #print(inputs_train)
 
@@ -358,6 +358,7 @@ def train_model(
             running_recon_loss = 0.0
             running_kl_loss = 0.0
             #profiler.step()
+        i += 1
     if verbose:
         print()
         print('Training complete')
