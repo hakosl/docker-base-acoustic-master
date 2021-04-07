@@ -113,7 +113,7 @@ def compute_mean_auc(model, dataloader):
     device = next(model.parameters()).device
     latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader, device)
     mean_auc, all_aucs, all_aucs_factors, all_aucs_factor_vals = calculate_explicitness(latent_mus, one_hot(sample_indexes))
-    
+    print(all_aucs)
     return np.mean(mean_auc)
 
 

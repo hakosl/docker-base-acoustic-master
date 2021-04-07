@@ -240,6 +240,8 @@ def train_model(
     )
 
 
+
+
     data_transform = CombineFunctions([remove_nan_inf, db_with_limits_norm])
 
     
@@ -315,7 +317,7 @@ def train_model(
             print(f"explicitness: {explicitness}")
             writer.add_scalar("f-stat/explicitness", explicitness, i)
 
-            if best_val_loss < explicitness:
+            if best_val_loss <= explicitness:
                 best_val_loss = explicitness
                 
                 best_val_iteration = i
@@ -330,28 +332,9 @@ def train_model(
 
             else:
                 save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
-                break
 
         if (i + 1) % log_step == 0:
             delta = print_loss_save_latent(model, inputs_test, start_time, i, iterations, base_figure_dir, recon_criterion, variational_beta, running_loss_train, running_recon_loss, running_kl_loss, log_step, losses, recon_losses, kl_losses, iteration, device, si_test, latent_image_fns, verbose)
-            if best_val_loss > running_loss_train:
-                best_val_loss = running_loss_train
-                
-                best_val_iteration = i
-
-                # Save model parameters to file after training
-                if save_model_params:
-                    if path_model_params_save == None:
-                        path_model_params_save = path_model_params_load
-                    #torch.cuda.empty_cache()
-                    #torch.save(model.to('cpu').state_dict(), path_model_params)
-                    torch.save(model.state_dict(), path_model_params_save)
-                    print('Trained model parameters saved to file: ' + path_model_params_save)
-
-            else:
-                if i > best_val_iteration + patience:
-                    save_recon(model, inputs_train, x_recon, labels_train, dev, base_figure_dir, recon_criterion, variational_beta, i, writer)
-                    break
 
 
             running_loss_train = 0.0       

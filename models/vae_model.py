@@ -222,13 +222,13 @@ class VariationalAutoencoder(nn.Module):
         elif recon_loss == "MSE":
             recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
 
-        
+        n_samples = x.shape[0]
         # KL-divergence between the prior distribution over latent vectors
         # (the one we are going to sample from when generating new images)
         # and the distribution estimated by the generator for the given image.
         kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
 
-        return recon_loss + variational_beta * kldivergence, recon_loss, variational_beta * kldivergence
+        return recon_loss / n_samples + variational_beta * kldivergence, recon_loss, variational_beta * kldivergence
 
 def datapVAE(*args, **kwargs):
     return nn.DataParallel(VariationalAutoencoder(*args, **kwargs))

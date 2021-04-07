@@ -4,14 +4,15 @@ from data.echogram import get_echograms
 import numpy as np
 print("this is before loading data")
 
-dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val = get_datasets(batch_size = 1000, iterations=100, depthmap_transform=False)
+dataloader_train, dataloader_test, dataloader_val, dataset_train, dataset_test, dataset_val, echograms_train, echograms_test, echograms_val = get_datasets(window_dim=64, batch_size = 100, iterations=1000, depthmap_transform=False)
 
-imgs = np.array((1000* 100, 5, 32, 32))
-labels = np.array((1000 * 100, 1, 32, 32))
-si = np.array((1000 * 100,))
+imgs = np.zeros((1000* 100, 5, 64, 64))
+labels = np.zeros((1000 * 100, 64, 64))
+si = np.zeros((1000 * 100,))
 i = 0
 for data, l, s in dataloader_train:
     b, c, h, w = data.shape
+    print(data.shape)
     imgs[100 * i: 100* (i + 1)] = data
     labels[100 * i: 100*(i + 1)] = l
     si[100 * i: 100*(i + 1)] = s
@@ -24,9 +25,9 @@ with open("./data/train.npy", "wb") as f:
     np.save(f, labels)
     np.save(f, si)
 
-imgs = np.array((1000* 100, 5, 32, 32))
-labels = np.array((1000 * 100, 1, 32, 32))
-si = np.array((1000 * 100,))
+imgs = np.zeros((100* 100, 5, 64, 64))
+labels = np.zeros((100 * 100, 64, 64))
+si = np.zeros((100 * 100,))
 
 i = 0
 for data, l, s in dataloader_test:
@@ -35,6 +36,7 @@ for data, l, s in dataloader_test:
     labels[100 * i: 100*(i + 1)] = l
     si[100 * i: 100*(i + 1)] = s
     i += 1
+
 
 with open("./data/test.npy", "wb") as f:
     np.save(f, imgs)

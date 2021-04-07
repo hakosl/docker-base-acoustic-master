@@ -121,7 +121,7 @@ def get_datasets(frequencies=[18, 38, 120, 200], window_dim=32, partition="year"
 
     dataset_arguments = [window_size, frequencies, batch_size * iterations]
     test_dataset_arguments = [window_size, frequencies, 10000]
-    test_dataset_arguments = [window_size, frequencies, 1000]
+    test_dataset_arguments = [window_size, frequencies, 10000]
 
     dataset_train = Dataset(samplers_train, *dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap, depthmap_transform=depthmap_transform)
     dataset_test = Dataset(samplers_test, *test_dataset_arguments, si=True, **transform_functions, include_depthmap=include_depthmap)

@@ -71,7 +71,7 @@ profile:
 	$(RUNCMD) python3 -m cProfile -s time train_vae.py -c=config/vae_test_config.yaml
 
 tb:
-	$(RUNCMD) tensorboard --logdir=$(L)
+	$(RUNCMD) tensorboard --logdir=./runs
 
 
 sd:
