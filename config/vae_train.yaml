@@ -12,8 +12,8 @@ data_params:
   frequencies: [18, 38, 120, 200]
   variational_beta: [1.0, 6.0] #[0.1, 1.0, 2.0, 5.0, 10.0]
   dev: 1 # Set Cuda device number here, e.g. "dev=2".
-  window_dim: 32
-  batch_size: 64
+  window_dim: 64
+  batch_size: 81
   lr: 0.001
   log_step: 30
   iterations: 3000

@@ -17,13 +17,14 @@ data_params:
   batch_size: 81
   lr: 0.0001
   log_step: 2
-  iterations: 4
+  iterations: 1000
   path_model_params_load: "" # Set path to load pre-trained model params (only required if load_pre_trained==True).
   path_model_params_save: "/acoustic/test/vae_trained.pt" # Insert path, e.g. "/nr/project/bild/Cogmar/usr/obr/model/paper_v2_heave_2.pt",
   partition: "year"
   load_pre_trained: False
   save_model_params: True
   verbose: True
+  epochs: 1
   num_workers: 0
-  recon_criterion: "BCE"
+  recon_criterion: "MSE"
   base_figure_dir: "output/vae_test_figures"

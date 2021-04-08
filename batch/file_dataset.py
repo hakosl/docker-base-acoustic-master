@@ -5,10 +5,12 @@ import numpy as np
 class acoustics_dataset(Dataset):
     def __init__(self, file, transform=None):
         self.file = file
-        with open(file, "r") as f:
+        with open(file, "rb") as f:
             self.imgs = np.load(f)
             self.labels = np.load(f)
             self.si = np.load(f)
+
+        self.si = self.si.astype(int)
 
         self.transform = transform
         self.label_names = ["background", "seabed", "other", "sandeel"]

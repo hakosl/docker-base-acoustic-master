@@ -12,7 +12,7 @@ def calculate_explicitness(z, factors):
     all_aucs_factors=[]
     all_aucs_factor_vals=[]
     for factor_idx in range(n_f):
-        model = LogisticRegression(C=1e10)
+        model = LogisticRegression(C=1.0)
         model.fit(z, factors[:,factor_idx])
         preds = model.predict_proba(z)
         aucs=[]

@@ -1,4 +1,3 @@
-
 import os
 
 import torch
@@ -59,24 +58,24 @@ class Encoder(nn.Module):
 
         if self.alt_model:
             self.encoder = nn.Sequential(
-                nn.Conv2d(in_channels=self.hdim[0], out_channels=20,kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=self.hdim[0], out_channels=48,kernel_size=7, stride=2, padding=1),
                 nn.Dropout(p=0.2),
-                nn.BatchNorm2d(20),
+                nn.BatchNorm2d(48),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=20, out_channels=20,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
-                nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(40),
+                nn.Conv2d(in_channels=48, out_channels=64,kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=20, out_channels=40,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
-                nn.Conv2d(in_channels=40, out_channels=60,kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(60),
+                nn.Conv2d(in_channels=64, out_channels=72,kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm2d(72),
                 nn.ReLU(),
                 #nn.Conv2d(in_channels=60, out_channels=60,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
             )
-            self.middle_layer = nn.Sequential(nn.Linear(in_features=self.window_dim*self.window_dim*60, out_features = self.latent_in_dim), nn.BatchNorm1d(self.latent_in_dim), nn.ReLU())
+            self.middle_layer = nn.Sequential(nn.Linear(in_features=64*72, out_features = self.latent_in_dim), nn.BatchNorm1d(self.latent_in_dim), nn.ReLU())
 
             self.fc_mu = nn.Sequential(nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity), nn.BatchNorm1d(self.capacity))
             self.fc_logvar = nn.Sequential(nn.Linear(in_features=self.latent_in_dim, out_features=self.capacity), nn.BatchNorm1d(self.capacity))
@@ -137,22 +136,22 @@ class Decoder(nn.Module):
             self.fc = nn.Sequential(
                 nn.Linear(out_features=256, in_features=self.capacity),
                 nn.ReLU(),
-                nn.Linear(out_features=self.window_dim * self.window_dim *60, in_features=256),
-                Reshape((60, self.window_dim, self.window_dim))
+                nn.Linear(out_features=8 * 8 * 72, in_features=256),
+                Reshape((72, 8, 8))
             )
             self.decoder = nn.Sequential(
                 nn.ReLU(),
                 #nn.ConvTranspose2d(out_channels=60, in_channels=60,kernel_size=3, stride=2, padding=1, output_padding=1),
                 #nn.ReLU(),
-                nn.ConvTranspose2d(out_channels=40, in_channels=60,kernel_size=3, stride=1, padding=1),
+                nn.ConvTranspose2d(out_channels=48, in_channels=72,kernel_size=3, stride=2, padding=1, output_padding=0),
                 nn.ReLU(),
                 #nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=2, padding=1, output_padding=1),
                 #nn.ReLU(),
-                nn.ConvTranspose2d(out_channels=20, in_channels=40,kernel_size=3, stride=1, padding=1),
+                nn.ConvTranspose2d(out_channels=32, in_channels=48,kernel_size=3, stride=2, padding=1, output_padding=0),
                 nn.ReLU(),
                 #nn.ConvTranspose2d(out_channels=20, in_channels=20,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
-                nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=20,kernel_size=3, stride=1, padding=1),
+                nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=32,kernel_size=7, stride=2, padding=0, output_padding=1),
                 nn.Sigmoid(),
             )
         # self.conv4 = nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=4, stride=2, padding=1)
@@ -228,7 +227,7 @@ class VariationalAutoencoder(nn.Module):
         # and the distribution estimated by the generator for the given image.
         kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
 
-        return recon_loss / n_samples + variational_beta * kldivergence, recon_loss, variational_beta * kldivergence
+        return recon_loss / n_samples + variational_beta * kldivergence, recon_loss/n_samples, variational_beta * kldivergence
 
 def datapVAE(*args, **kwargs):
     return nn.DataParallel(VariationalAutoencoder(*args, **kwargs))

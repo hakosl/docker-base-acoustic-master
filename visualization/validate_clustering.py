@@ -74,13 +74,10 @@ def get_representation(model, dataloader, device):
         labels.append(label)
         si.append(index)
 
-    mus = np.stack(mus)
-    mus = mus.reshape(-1, mus.shape[-1])
-    logvars = np.stack(logvars)
-    logvars = logvars.reshape(-1, logvars.shape[-1])
-    labels = np.stack(labels)
-    si = np.stack(si)
-    si = si.reshape(-1)
+    mus = np.concatenate(mus)
+    logvars = np.concatenate(logvars)
+    labels = np.concatenate(labels)
+    si = np.concatenate(si)
 
     return mus, logvars, labels, si
 
@@ -113,7 +110,7 @@ def compute_mean_auc(model, dataloader):
     device = next(model.parameters()).device
     latent_mus, latent_logvars, labels, sample_indexes = get_representation(model, dataloader, device)
     mean_auc, all_aucs, all_aucs_factors, all_aucs_factor_vals = calculate_explicitness(latent_mus, one_hot(sample_indexes))
-    print(all_aucs)
+
     return np.mean(mean_auc)
 
 
@@ -219,7 +216,7 @@ def validate_clustering(model, clusterer, dataloader_train, dataloader_test, sam
     colors = np.array(["r", "g", "b", "tab:orange", "purple", "cyan"])
     for si in np.unique(sample_indexes[:n_visualize]):
         sm = sample_indexes[:n_visualize] == si
-        ax[2].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(samplers_test[:n_visualize][si]))
+        ax[2].scatter(me[:n_visualize][sm, 0], me[:n_visualize][sm, 1], alpha=0.4, c=colors[si], label=str(np.array(samplers_test)[:n_visualize][si]))
         ax[2].set_title("original labels")
 
     ax[2].legend()
