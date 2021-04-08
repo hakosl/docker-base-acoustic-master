@@ -147,8 +147,7 @@ class Decoder(nn.Module):
                 nn.ReLU(),
                 #nn.ConvTranspose2d(out_channels=20, in_channels=20,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
-                nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=32,kernel_size=7, stride=2, padding=0, output_padding=1),
-                nn.Sigmoid(),
+                nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=32,kernel_size=7, stride=2, padding=0, output_padding=1)
             )
         # self.conv4 = nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=4, stride=2, padding=1)
         # self.conv3 = nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=4, stride=2, padding=1)

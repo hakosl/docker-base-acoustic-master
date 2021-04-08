@@ -152,7 +152,7 @@ class Decoder(nn.Module):
                 #nn.ConvTranspose2d(out_channels=20, in_channels=20,kernel_size=3, stride=2, padding=1),
                 #nn.ReLU(),
                 nn.ConvTranspose2d(out_channels=self.hdim[0], in_channels=32,kernel_size=7, stride=2, padding=0, output_padding=1),
-                nn.Sigmoid(),
+
             )
         # self.conv4 = nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=4, stride=2, padding=1)
         # self.conv3 = nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=4, stride=2, padding=1)
@@ -219,7 +219,7 @@ class VariationalAutoencoder(nn.Module):
         if recon_loss == "BCE":
             recon_loss = F.binary_cross_entropy(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
         elif recon_loss == "MSE":
-            recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2), reduction="sum")
+            recon_loss = F.mse_loss(recon_x.view(-1, channels * window_dim ** 2), x.view(-1, channels * window_dim ** 2))
 
         n_samples = x.shape[0]
         # KL-divergence between the prior distribution over latent vectors
@@ -227,7 +227,7 @@ class VariationalAutoencoder(nn.Module):
         # and the distribution estimated by the generator for the given image.
         kldivergence = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1), dim=0)
 
-        return recon_loss / n_samples + variational_beta * kldivergence, recon_loss/n_samples, variational_beta * kldivergence
+        return recon_loss + variational_beta * kldivergence, recon_loss, variational_beta * kldivergence
 
 def datapVAE(*args, **kwargs):
     return nn.DataParallel(VariationalAutoencoder(*args, **kwargs))

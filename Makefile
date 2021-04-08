@@ -23,7 +23,7 @@ USERCONFIG   = --build-arg user=$(USERNAME) --build-arg uid=$(USERID) --build-ar
 	docker build $(USERCONFIG) -t $(USERNAME)-$(IMAGENAME) -f docker/Dockerfile-$(CONFIG) --network=host docker
 
 # Using -it for interactive use
-RUNCMD=docker run $(RUNTIME) --rm --network=host --user $(USERID):$(GROUPID) $(IPC) $(PORT) $(SSHFSOPTIONS) $(DISKS) $(MOUNT) $(USERNAME)-$(IMAGENAME)
+RUNCMD=docker run --interactive $(RUNTIME) --rm --network=host --user  $(USERID):$(GROUPID) $(IPC) $(PORT) $(SSHFSOPTIONS) $(DISKS) $(MOUNT) $(USERNAME)-$(IMAGENAME)
 
 # Replace 'bash' with the command you want to do
 default: .docker
